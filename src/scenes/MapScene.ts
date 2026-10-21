@@ -1,6 +1,6 @@
 import { LEFT, TOP } from '../midp/anchor';
 import { FONT_MEDIUM, FONT_SMALL, type Graphics } from '../midp/Graphics';
-import { KEY_FIRE, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
+import { KEY_FIRE, KEY_NUM0, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
 import { NPC } from '../game/actor/NPC';
 import { Player } from '../game/actor/Player';
 import { Model, TYPE_PET } from '../game/actor/Model';
@@ -9,6 +9,8 @@ import * as GameStore from '../game/main/GameStore';
 import * as GameWorld from '../game/main/GameWorld';
 import { MAP_MODEL_IMAGES } from '../game/main/MapModels';
 import { WORLD_MAP_FILES, WorldMap } from '../game/main/WorldMap';
+import { SPRITE_LEVUP_UP, SPRITE_MYPLAYER_POS, drawMyPlayerEffect, initMyPlayerEffect } from '../game/main/MyPlayerEffect';
+import { processUpLevelMsg } from '../game/main/LevelUp';
 import * as WorldPanel from '../game/main/WorldPanel';
 import { GameMap, TAG_FORCE_PAINT, TAG_MAP_IMG_OFF } from '../game/map/GameMap';
 import { TEST_MAP_SPRITES, buildTestMap } from '../game/map/TestMap';
@@ -111,7 +113,8 @@ export class MapScene implements Scene {
       this.status = 'Lỗi đọc dữ liệu bản đồ';
       return;
     }
-    await Promise.all([...TEST_MAP_SPRITES, SPRITE_POINTER_EFFECT, ...PET_SPRITES].map(preloadSprite));
+    await Promise.all([...TEST_MAP_SPRITES, SPRITE_POINTER_EFFECT, SPRITE_LEVUP_UP, SPRITE_MYPLAYER_POS, ...PET_SPRITES].map(preloadSprite));
+    initMyPlayerEffect();
     const mySprite = await dressedSprite(currentAppearance);
     if (!mySprite) {
       this.status = 'Không dựng được nhân vật';
@@ -185,20 +188,9 @@ export class MapScene implements Scene {
     map.init();
     if (hud) {
       const [icon1] = encodeIcons(currentAppearance);
-      hud.updateWorldPlayerInfoUI({
-        level: me.getLevel(),
-        hp: me.get(ATTR_HP),
-        maxHp: me.get(ATTR_HP_MAX),
-        mp: me.get(ATTR_MP),
-        maxMp: me.get(ATTR_MP_MAX),
-        exp: me.get(ATTR_EXP),
-        maxExp: me.get(ATTR_EXP_MAX),
-        combatPoint: me.combatPoint,
-        value118: 0,
-        level2: me.level2,
-        pet: hudPet(me.getPet()),
-        headSprite: await resolveSprite(() => createHeadSpriteByIcon(icon1)),
-      });
+      this.headSprite = await resolveSprite(() => createHeadSpriteByIcon(icon1));
+      this.hud = hud;
+      this.refreshHud(me);
       const mini = hud.get(EVENT_ALL_INFO_SMALL_MAP);
       GameMap.initSmallMapWidth(mini, SCREEN_WIDTH, map);
       Object.assign(msgEnv, { width: uiScreen.width, height: uiScreen.height, font: uiFont });
@@ -220,6 +212,43 @@ export class MapScene implements Scene {
     this.map = map;
   }
 
+  private headSprite: ReturnType<typeof createHeadSpriteByIcon> = null;
+
+  /** UIHandler.updateWorldPlayerInfoUI: the HUD's player and pet panels from the player. */
+  private refreshHud(me: Player): void {
+    this.hud?.updateWorldPlayerInfoUI({
+      level: me.getLevel(),
+      hp: me.get(ATTR_HP),
+      maxHp: me.get(ATTR_HP_MAX),
+      mp: me.get(ATTR_MP),
+      maxMp: me.get(ATTR_MP_MAX),
+      exp: me.get(ATTR_EXP),
+      maxExp: me.get(ATTR_EXP_MAX),
+      combatPoint: me.combatPoint,
+      value118: 0,
+      level2: me.level2,
+      pet: hudPet(me.getPet()),
+      headSprite: this.headSprite,
+    });
+  }
+
+  /**
+   * Dev key 0: stand-in for the server's level-up message (MsgHandler.processUpLevelMsg) with
+   * made-up numbers: enough exp for one level, 5 skill points, 5 attribute points.
+   */
+  private simulateLevelUp(me: Player): void {
+    const text = processUpLevelMsg(me, {
+      exp: me.get(ATTR_EXP_MAX) - me.get(ATTR_EXP),
+      levels: 1,
+      newExp: 0,
+      newExpMax: Math.round(me.get(ATTR_EXP_MAX) * 1.2),
+      skillPoints: 5,
+      attrPoints: 5,
+    });
+    WorldMessage.addPromptMsg(text);
+    this.refreshHud(me);
+  }
+
   update(input: InputState): void {
     // Stage 60 (world map): the map and its dialogs take the input; the world does not run.
     if (WorldMap.isActive()) {
@@ -239,6 +268,7 @@ export class MapScene implements Scene {
     if (key === KEY_SOFT_LEFT) this.map?.setTag(TAG_MAP_IMG_OFF, !this.map.isTag(TAG_MAP_IMG_OFF));
     if (key === KEY_FIRE) this.showGrid = !this.showGrid;
     if (key === KEY_STAR) this.showHud = !this.showHud;
+    if (key === KEY_NUM0 && GameWorld.myPlayer) this.simulateLevelUp(GameWorld.myPlayer);
     uiClock.tick++;
     WorldMessage.logic();
     if (this.hud && uiClock.tick % 80 === 0) {
@@ -335,6 +365,8 @@ export class MapScene implements Scene {
     }
     const hud = this.showHud ? this.hud : null;
     map.draw(g, hud != null);
+    // GameCanvas world paint: the player's marker and level-up effect, then the HUD.
+    if (hud) drawMyPlayerEffect(g, me, map.offsetLeftX, map.offsetTopY);
     if (this.showGrid) this.drawCollision(g, map);
     const fx = this.pointerFx;
     if (fx && fx.sprite.getCurAnimationLoopTime() !== 0) fx.sprite.draw(g, fx.x, fx.y);
