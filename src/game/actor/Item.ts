@@ -176,6 +176,18 @@ export class PlayerBag {
     return this.bagItems().map(([, it]) => it).filter((it) => it.isCanUse(kind));
   }
 
+  /** Takes `n` of item `id` out of the bag, emptying stacks in slot order. */
+  removeItemsById(id: number, n: number): void {
+    for (const [slot, it] of this.bagItems()) {
+      if (n <= 0) return;
+      if (it.id !== id) continue;
+      const take = Math.min(n, it.quantity);
+      it.quantity -= take;
+      n -= take;
+      if (it.quantity <= 0) this.items.delete(slot);
+    }
+  }
+
   clearBag(): void {
     for (const s of [...this.items.keys()]) if (s >= BAG_START) this.items.delete(s);
   }

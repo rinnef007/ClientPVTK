@@ -4,7 +4,7 @@
 import { BAG_START, ITEM_TYPE_PET, Item, PlayerBag, SLOT_PET } from '../actor/Item';
 import { Talent } from '../core/Talent';
 import { SKILL_TYPE_ACTIVE, SKILL_TYPE_AUTO, SKILL_TYPE_PASSIVE, Skill } from '../core/Skill';
-import { CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
+import { CONDITION_DEMO_MISSION_FINISHED, CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../actor/MyPet';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, ATTR_MP_MAX, type Player } from '../actor/Player';
 
@@ -83,9 +83,48 @@ export function makeDemoMissions(): Mission[] {
     name: 'Gặp NPC nhiệm vụ (demo)',
     desc: 'Tìm NPC có dấu "!" trên bản đồ nhỏ (nhiệm vụ giả).',
     simpleDesc: 'Nói chuyện với NPC nhiệm vụ.',
+    dialogStartFinish: 'Ngươi đã tìm thấy ta. (lời thoại giả)',
     honor: 5,
+    exp: 300,
   });
   return [kill, collect, talk];
+}
+
+/** Ids of the demo NPCs that give and take the made-up missions (MapScene creates them). */
+export const DEMO_QUEST_NPC_ID = 201;
+export const DEMO_ELDER_NPC_ID = 200;
+
+/**
+ * Made-up NPC missions for the local simulation: the quest NPC offers a letter to deliver to the
+ * elder (who then hands out the report back, chained with submitNextMissionID) and a level 50
+ * mission that stays hidden. All names, texts and rewards are invented.
+ */
+export function makeDemoNpcMissions(mapId: number): { quest: Mission[]; elder: Mission[] } {
+  const letter = new Mission(9004);
+  Object.assign(letter, {
+    name: 'Thư cho trưởng thôn (demo)',
+    desc: 'Mang lá thư này tới NPC demo 1 (nhiệm vụ giả).',
+    simpleDesc: 'Nói chuyện với NPC demo 1.',
+    dialogStartFinish: 'Thư của ta đây à? Cảm ơn. (lời thoại giả)',
+    mapId, npcId: DEMO_ELDER_NPC_ID, level: 1, exp: 600, money3: 50, submitNextMissionID: 9006,
+  });
+  const report = new Mission(9006);
+  Object.assign(report, {
+    name: 'Hồi âm (demo)',
+    desc: 'Trưởng thôn nhờ mang hồi âm về cho NPC demo 2 (nhiệm vụ giả).',
+    simpleDesc: 'Quay lại NPC demo 2.',
+    dialogStartFinish: 'Tốt lắm, cảm ơn ngươi. (lời thoại giả)',
+    mapId, npcId: DEMO_QUEST_NPC_ID, level: 1, exp: 900, money2: 10,
+  });
+  report.acceptCondition = [new Condition(CONDITION_DEMO_MISSION_FINISHED, '', 1, 0, letter.getId())];
+  const hard = new Mission(9005);
+  Object.assign(hard, {
+    name: 'Thử thách cấp cao (demo)',
+    desc: 'Chỉ dành cho cấp 50 trở lên (nhiệm vụ giả).',
+    dialogNotStartNotReady: 'Ngươi còn quá yếu.',
+    mapId, npcId: DEMO_QUEST_NPC_ID, level: 50, exp: 99999,
+  });
+  return { quest: [letter, hard], elder: [report] };
 }
 
 function skill(id: number, name: string, type: number, level: number, fields: Partial<Skill>): Skill {
@@ -163,6 +202,7 @@ export function fillDemoPlayer(p: Player): void {
   // Combat values for the T.Tính tab (ids as in PlayerInfoUIAction.updatePlayerAttributeUI).
   DEMO_COMBAT_VALUES.forEach(([k, v]) => p.set(k, v));
   p.missionList = makeDemoMissions();
+  p.missionList.forEach((m) => m != null && (m.npcId = DEMO_QUEST_NPC_ID));
   p.skillList = makeDemoSkills();
   p.talentList = makeDemoTalents();
   p.autoSkillID = [301, 0, 0];

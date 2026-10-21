@@ -3,12 +3,19 @@
 // server sends missions as bytes (Mission.fromBytes) and each condition keeps its raw data; here
 // a condition holds its already-decoded fields. Only the "kill monsters" (2) and "have item" (7)
 // conditions are ported — the others (level, money, map, buffs, city / country…) are not.
+// The NPC side (status per NPC, visibility, the finished-mission bitset) follows Mission.java for
+// ordinary maps only: city / country / mirror maps, escort and guide missions are not ported.
 import type { Player } from '../actor/Player';
 import { PowerString } from '../string/PowerString';
 import { isNullText } from '../common/Tool';
 
 export const CONDITION_KILL_MONSTER = 2;
 export const CONDITION_HAVE_ITEM = 7;
+/**
+ * Not a game condition type: the offline demo's "mission `itemId` finished" check, standing in for
+ * the server only offering a chained mission after the previous one (the real type is unknown).
+ */
+export const CONDITION_DEMO_MISSION_FINISHED = -1;
 
 /** Mission.setting bit for random ("challenge") missions. */
 export const MISSION_IS_RANDOM = 2097152;
@@ -42,12 +49,30 @@ export class Condition {
   isConditionOfSatisfy(p: Player | null): boolean {
     if (p == null) return false;
     if (this.type === CONDITION_KILL_MONSTER || this.type === CONDITION_HAVE_ITEM) return this.progress(p) >= this.need;
+    if (this.type === CONDITION_DEMO_MISSION_FINISHED) return Mission.isMissionFinish(p, this.itemId);
     return true;
   }
 }
 
+/** getMissionStatus: goals met (submit), in progress, can accept, cannot accept yet. */
+export const STATUS_SUBMIT = 0;
+export const STATUS_DOING = 1;
+export const STATUS_ACCEPT = 2;
+export const STATUS_NOT_READY = 3;
+
+/** What Mission reads of an NPC (kept structural so Mission does not import the actor). */
+export interface MissionNpc {
+  getId(): number;
+}
+
 export class Mission {
   name = '';
+  /** Lowest level to accept. */
+  level = 0;
+  /** The map and NPC that give and take the mission (Mission.mapId / npcId). */
+  mapId = 0;
+  npcId = 0;
+  dialogNotStartNotReady = '';
   desc = '';
   simpleDesc = '';
   dialogStartNotFinish = '';
@@ -58,6 +83,9 @@ export class Mission {
   money3 = 0;
   honor = 0;
   submitCondition: Condition[] | null = null;
+  acceptCondition: Condition[] | null = null;
+  /** Offered right after this one is handed in (doSubmitEndCheck). */
+  submitNextMissionID = 0;
 
   constructor(private readonly id: number) {}
 
@@ -71,6 +99,50 @@ export class Mission {
 
   isComplete(p: Player | null): boolean {
     return this.submitCondition == null || this.submitCondition.every((c) => c.isConditionOfSatisfy(p));
+  }
+
+  /** Level and accept conditions. */
+  isCanAccept(p: Player | null): boolean {
+    if (p == null || this.level > p.getLevel()) return false;
+    return this.acceptCondition == null || this.acceptCondition.every((c) => c.isConditionOfSatisfy(p));
+  }
+
+  getMissionStatus(p: Player): number {
+    if (p.getMissionById(this.id) != null) return this.isComplete(p) ? STATUS_SUBMIT : STATUS_DOING;
+    return this.isCanAccept(p) ? STATUS_ACCEPT : STATUS_NOT_READY;
+  }
+
+  /** isVisibleAndSubmit on an ordinary map: the mission belongs to this map and this NPC. */
+  isVisibleAndSubmit(npc: MissionNpc | null, curMap: number): boolean {
+    return npc != null && this.mapId === curMap && this.npcId === npc.getId();
+  }
+
+  /** The "finished" dialog, the met goals ("Xong：") and the rewards. */
+  getSubmitDetails(p: Player | null): string {
+    let s = `${this.dialogStartFinish}\n`;
+    const cond = this.getConditionDesc(this.submitCondition, p);
+    if (!isNullText(cond)) s += `${PowerString.makeColorString('Xong：', 16776960)}${cond}\n`;
+    return s + this.getMissionRewardString();
+  }
+
+  /** Player.missionStatus: one bit per finished mission id. */
+  static isMissionFinish(p: Player | null, id: number): boolean {
+    const bits = p?.missionStatus;
+    if (bits == null || id < 0) return false;
+    const i = id >> 3;
+    return i < bits.length && (bits[i] & (1 << (id % 8))) !== 0;
+  }
+
+  static setMissionStatus(p: Player | null, id: number, finished: boolean): void {
+    const bits = p?.missionStatus;
+    if (bits == null || id < 0 || id >> 3 >= bits.length) return;
+    if (finished) bits[id >> 3] |= 1 << (id % 8);
+    else bits[id >> 3] &= ~(1 << (id % 8));
+  }
+
+  /** A mission of the player's whose goals are met and that this NPC takes. */
+  static isHaveSubmitMission(p: Player, npc: MissionNpc, curMap: number): boolean {
+    return p.missionList.some((m) => m != null && m.isVisibleAndSubmit(npc, curMap) && m.isComplete(p));
   }
 
   getConditionDesc(conds: Condition[] | null, p: Player | null): string | null {

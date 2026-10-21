@@ -5,6 +5,8 @@ import type { Talent } from '../core/Talent';
 import type { PlayerBag } from './Item';
 import { Model, TYPE_PLAYER } from './Model';
 
+const MISSION_SLOTS = 10;
+
 /** Model.get(index) attribute ids used by the screens (Model.getValue in Java). */
 export const ATTR_EXP = 0;
 export const ATTR_EXP_MAX = 1;
@@ -69,6 +71,33 @@ export class Player extends Model {
   Pklosecount = 0;
   /** Missions in progress (Player.missionList; null entries are empty slots). */
   missionList: (Mission | null)[] = [];
+  /** Player.missionStatus: a bit per finished mission id (sent by the server at login). */
+  missionStatus: Uint8Array = new Uint8Array(1250);
+
+  getMissionById(id: number): Mission | null {
+    return this.missionList.find((m) => m != null && m.getId() === id) ?? null;
+  }
+
+  /** Player.addMission: the first free of 10 slots; false when taken or full. */
+  addMission(m: Mission): boolean {
+    if (this.getMissionById(m.getId()) != null) return false;
+    for (let i = 0; i < MISSION_SLOTS; i++) {
+      if (this.missionList[i] == null) {
+        this.missionList[i] = m;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  deleteMission(m: Mission): void {
+    const i = this.missionList.indexOf(m);
+    if (i >= 0) this.missionList[i] = null;
+  }
+
+  submitMission(m: Mission): void {
+    this.deleteMission(m);
+  }
 
   /** Player.getPKWin: duel win rate. */
   getPKWin(): string {

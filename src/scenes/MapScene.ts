@@ -26,7 +26,9 @@ import { setOnQuitGame } from '../game/ui/UIAction';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles, type HudPetInfo } from '../game/ui/WorldHud';
 import { MyPet } from '../game/actor/MyPet';
 import * as WorldMessage from '../game/main/WorldMessage';
-import { fillDemoPlayer } from '../game/demo/DemoData';
+import { fillDemoPlayer, makeDemoNpcMissions } from '../game/demo/DemoData';
+import { simRefreshNpcSigns } from '../game/main/MissionServer';
+import { TYPE_MISSION, doNpc, setOnMissionReward } from '../game/ui/screens/mission';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX } from '../game/actor/Player';
 import { msgEnv } from '../game/core/PowerMsg';
 import { CHANNEL_AREA, CHANNEL_SYSTEM, CHANNEL_TEAM, CHANNEL_WORLD, ChatMsg, addChatMsg, clearChatHistory } from '../game/main/ChatMsg';
@@ -37,7 +39,8 @@ import { SOFTKEY_H, initUIEnvironment, softKeyAt } from './ui';
 
 const HUD_H = 20;
 /** Image sets the HUD code uses beyond those named in ui/211: mini map marks, small digits, combat digits. */
-const HUD_EXTRA_SETS = [4, 1002, 238, 216];
+/** Plus set 3: the mission status signs of the NPC dialog buttons. */
+const HUD_EXTRA_SETS = [4, 1002, 238, 216, 3];
 /** Made-up numbers for the HUD: there is no server to send the real player data. */
 function hudPet(p: Player | null): HudPetInfo | null {
   if (!(p instanceof MyPet)) return null;
@@ -100,7 +103,8 @@ export class MapScene implements Scene {
   /** UIHandler.createUIFromXML(211) with everything it draws preloaded. */
   private async loadHud(): Promise<WorldHud | null> {
     const fs = getAssetFS();
-    await preloadUI(UI_WORLD_PANEL, TYPE_ALERT);
+    // ui/46: the NPC mission dialog opens straight from the world (NPC.doNpc).
+    await preloadUI(UI_WORLD_PANEL, TYPE_ALERT, TYPE_MISSION);
     await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET_HEAD), ...MAP_MODEL_IMAGES, ...WORLD_MAP_FILES]);
     await Promise.all([SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
     initUIEnvironment();
@@ -170,7 +174,14 @@ export class MapScene implements Scene {
       n.setAnimationByDir(false);
       npcs.push(n);
     }
-    npcs[QUEST_NPC].icon2 = 1; // quest available
+    // Made-up quest data (from the server in the game): the demo missions are given and taken back
+    // on this map; NPC 2 is the quest giver, NPC 1 the elder of the letter chain.
+    const demo = makeDemoNpcMissions(map.getMapID());
+    for (const m of me.missionList) if (m != null) m.mapId = map.getMapID();
+    npcs[QUEST_NPC].missions = demo.quest;
+    npcs[QUEST_NPC].talkDetail = 'Chào lữ khách! Ta có vài việc cần nhờ. (lời thoại giả)';
+    npcs[0].missions = demo.elder;
+    npcs[0].talkDetail = 'Ta là trưởng thôn (NPC giả).';
     await Promise.all(
       npcs.flatMap((n) => (n.getPlayerSprite()?.fragmentFiles ?? []).map((f) => f?.gameImage?.getImage()?.ready)),
     );
@@ -181,6 +192,9 @@ export class MapScene implements Scene {
     GameWorld.otherModels.clear();
     for (const o of others) GameWorld.otherModels.set(o.getId(), o);
     GameWorld.setNpcList(npcs);
+    simRefreshNpcSigns(me, npcs, map.getMapID());
+    GameWorld.setDoNpc(doNpc);
+    setOnMissionReward((p) => this.refreshHud(p));
     WorldPanel.clearMyMove();
 
     map.models = [me, ...others, ...npcs];

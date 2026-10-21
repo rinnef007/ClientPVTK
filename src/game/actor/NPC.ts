@@ -1,10 +1,12 @@
 // Port of the wandering part of com.hz.actor.NPC (Vineflower decompile of classes2.dex).
-// Not ported: dialogs, quests, battles, welcome frames, jump-map NPCs.
+// The quest data (missions offered, talk text, sign) is here; the dialog flow is in
+// ui/screens/mission.ts. Not ported: shops, battles, welcome frames, jump-map NPCs.
 import type { Graphics } from '../../midp/Graphics';
 import { getXKey, getYKey, isColliding, rand } from '../common/Tool';
 import { Control } from '../main/Control';
 import * as GameWorld from '../main/GameWorld';
 import { getFaceXY } from '../main/WorldPanel';
+import type { Mission } from '../core/Mission';
 import { Model, TYPE_NPC } from './Model';
 
 export const NPC_TYPE_MONSTER = 1;
@@ -12,8 +14,15 @@ export const NPC_TYPE_JUMP = 8;
 
 export class NPC extends Model {
   npcType = 0;
-  /** Quest sign shown over the NPC and on the mini map (icon2: 1 !, 2 ?, 3 …). */
+  /**
+   * Quest sign over the NPC (set 11, frame sign-1: 1 orange ?, 2 grey ?, 3 orange !, 4 grey !) and on
+   * the mini map; the server sets it (processMissionNPCStatus → setSign).
+   */
   icon2 = 0;
+  /** Missions this NPC offers (NPC.missions, loaded from the server by doGetMissionData). */
+  missions: Mission[] = [];
+  /** Greeting shown above the mission list (NPC.talkDetail). */
+  talkDetail: string | null = null;
   status = 0;
   rangeX = 0;
   rangeY = 0;
@@ -29,6 +38,13 @@ export class NPC extends Model {
 
   getSign(): number {
     return this.icon2;
+  }
+  setSign(v: number): void {
+    this.icon2 = v;
+  }
+  /** NPC.getMissonById: one of the missions this NPC offers. */
+  getMissonById(id: number): Mission | null {
+    return this.missions.find((m) => m.getId() === id) ?? null;
   }
   /** Status bit 32: drawn on the mini map with the jump marker. */
   isJumpIcon(): boolean {

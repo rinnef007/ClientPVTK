@@ -1446,8 +1446,13 @@ export class GWindow extends GLinePanel {
   }
 }
 
+/** GLabel setting bit: iconValue is a frame of GameView.signSet (/common/3, the mission status signs). */
+export const ICON_SIGN = 1024;
+
 export class GLabel extends GWidget {
   label: string | null = null;
+  /** GLabel.iconValue: the frame drawn before the text (-1 none); only the ICON_SIGN kind is ported. */
+  iconValue = -1;
   labelColor = 0;
   selectLabelColor = 0;
   anchor = 0;
@@ -1506,6 +1511,12 @@ export class GLabel extends GWidget {
   }
   isSetting(bit: number): boolean {
     return (this.setting & bit) !== 0;
+  }
+
+  /** GLabel.setIconValue (the ICON_SIGN kind; the money / VIP kinds are not ported). */
+  setIconValue(v: number, kind: number): void {
+    this.iconValue = v;
+    this.setSetting(kind, true);
   }
 
   setData(text: string, color: number, selectColor: number, anchor: number): void {
@@ -1650,7 +1661,10 @@ export class GLabel extends GWidget {
     const w = vm[VM.W] - vm[VM.BORDER_LEFT] - vm[VM.BORDER_RIGHT];
     const h = vm[VM.H] - vm[VM.BORDER_TOP] - vm[VM.BORDER_BOTTOM];
     let anchor = this.anchor;
-    const sx = x + this.scrollOffset;
+    // A sign icon sits 8 px into the text box, vertically centred; the text moves 16 px right.
+    const sign = this.iconValue >= 0 && this.isSetting(ICON_SIGN);
+    if (sign) getImageSet(3)?.drawFrame(g, this.iconValue, x + 8, y + ((h / 2) | 0), 0, 3);
+    const sx = x + this.scrollOffset + (sign ? 16 : 0);
     const tx = anchor & HCENTER ? sx + ((w / 2) | 0) : anchor & RIGHT ? sx + w : sx;
     let ty: number;
     if (anchor & VCENTER) {
