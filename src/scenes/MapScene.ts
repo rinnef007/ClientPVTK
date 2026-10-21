@@ -19,6 +19,7 @@ import { TYPE_ALERT, UIHandler, preloadUI } from '../game/ui/UIHandler';
 import '../game/ui/screens';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles } from '../game/ui/WorldHud';
 import * as WorldMessage from '../game/main/WorldMessage';
+import { fillDemoPlayer } from '../game/demo/DemoData';
 import { msgEnv } from '../game/core/PowerMsg';
 import { CHANNEL_AREA, CHANNEL_SYSTEM, CHANNEL_TEAM, CHANNEL_WORLD, ChatMsg } from '../game/main/ChatMsg';
 import { currentAppearance } from './DressingRoomScene';
@@ -114,6 +115,7 @@ export class MapScene implements Scene {
     me.setPosition(20, 17);
     me.setPlayerSprite(mySprite);
     me.setAnimationByDir(false);
+    fillDemoPlayer(me);
 
     const others: Model[] = [];
     for (let i = 0; i < OTHER_PLAYERS.length; i++) {

@@ -37,6 +37,8 @@ export class UIInput {
   onAction: (w: GWidget | null) => void = () => {};
   /** Called for "back" (soft-right or a close button). */
   onClose: () => void = () => {};
+  /** UIHandler.updateUI: runs after every handled key with the container that took it. */
+  afterKey: (key: number, target: GContainer | null) => void = () => {};
 
   private dragGContainer: GContainer | null = null;
   private dragScrollBar = false;
@@ -76,6 +78,7 @@ export class UIInput {
       if (target != null) r[1](target);
     }
     if (target instanceof GWindow) this.setActionGWidget(target.focusWidget);
+    this.afterKey(key, target);
   }
 
   pointerPressed(x: number, y: number): void {

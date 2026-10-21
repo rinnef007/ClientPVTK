@@ -2,7 +2,8 @@
 // The special pre-loaded image sets (money, icons, VIP…) are created on demand from
 // /common/<id> like every other id; GameView.initImage's custom loading is not ported yet.
 import type { Graphics } from '../../midp/Graphics';
-import { PATH_COMMON } from '../common/Utilities';
+import { PATH_COMMON, readPNGFile } from '../common/Utilities';
+import type { Image } from '../image/Image';
 import { ImageSet } from '../image/ImageSet';
 
 const imageSetMap = new Map<number, ImageSet | null>();
@@ -16,6 +17,20 @@ export function getImageSet(id: number): ImageSet | null {
 /** Every image-set id referenced by a set of UI files can be preloaded with these paths. */
 export function imageSetFiles(id: number): string[] {
   return [`common/${id}.fr`, `common/${id}.png`];
+}
+
+/** GameView.backIcons: the item slot back plates /common/ic0..ic5.png, by item grade. */
+const backIcons: (Image | null | undefined)[] = [];
+export const BACK_ICON_COUNT = 6;
+
+export function getBackIcon(i: number): Image | null {
+  if (i < 0 || i >= BACK_ICON_COUNT) return null;
+  if (backIcons[i] === undefined) backIcons[i] = readPNGFile(`/common/ic${i}.png`);
+  return backIcons[i] ?? null;
+}
+
+export function backIconFiles(): string[] {
+  return Array.from({ length: BACK_ICON_COUNT }, (_, i) => `common/ic${i}.png`);
 }
 
 export function clearImageSetMap(): void {

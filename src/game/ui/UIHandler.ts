@@ -3,10 +3,11 @@
 // removed once closed), drawAll, and the alert dialog. Per-screen data fillers live in the
 // screens/ modules; actions are routed to a listener (UIAction).
 import type { Graphics } from '../../midp/Graphics';
+import { KEY_DOWN, KEY_UP } from '../../midp/Input';
 import { getAssetFS } from '../common/Utilities';
 import { isNullText } from '../common/Tool';
 import { GContainer, GLinePanel, GTextArea, GWidget, GWindow, GLabel, GPixelLabel, uiScreen } from '../gui/GWidget';
-import { fillAlphaRect, imageSetFiles } from '../main/GameView';
+import { backIconFiles, fillAlphaRect, imageSetFiles } from '../main/GameView';
 import { preloadSprite } from '../sprite/GameSprite';
 import { PIXEL_FONT_SIZES } from '../string/PixelFont';
 import { build, collectSpriteIds } from './UIBuilder';
@@ -39,7 +40,7 @@ export async function preloadUI(...types: number[]): Promise<void> {
   const fs = getAssetFS();
   const need = types.filter((t) => !files.has(t));
   if (need.length === 0) return;
-  await fs.preload([...need.map((t) => `ui/${t}.ui`), ...PIXEL_FONT_SIZES.map((n) => `common/${n}.t`)]);
+  await fs.preload([...need.map((t) => `ui/${t}.ui`), ...PIXEL_FONT_SIZES.map((n) => `common/${n}.t`), ...backIconFiles()]);
   for (const t of need) {
     const data = fs.get(`ui/${t}.ui`);
     if (!data) continue;
@@ -56,6 +57,8 @@ export function isUILoaded(type: number): boolean {
 
 export class UIHandler {
   static uiList: UIHandler[] = [];
+  /** UIHandler.updateUI parts (e.g. updateEquipUI), run for every UI after each key. */
+  static updateUIHooks: ((ui: UIHandler, key: number, target: GContainer | null) => void)[] = [];
   /** Default listener (UIAction.getUIActionInstance), installed by the action module. */
   static defaultListener: UIListener | null = null;
 
@@ -84,6 +87,12 @@ export class UIHandler {
       ui.input = new UIInput(root);
       ui.input.onAction = () => ui.notifyLayerAction(0);
       ui.input.onClose = () => ui.notifyLayerClose();
+      ui.input.afterKey = (key, target) => {
+        for (const hook of UIHandler.updateUIHooks) hook(ui, key, target);
+        // updateKeyUpDown
+        if (key === KEY_UP) ui.notifyLayerAction(4);
+        else if (key === KEY_DOWN) ui.notifyLayerAction(5);
+      };
     }
     return ui;
   }
@@ -107,6 +116,10 @@ export class UIHandler {
 
   getActionGWidget(): GWidget | null {
     return this.input?.actionGWidget ?? null;
+  }
+
+  getOldActionGWidget(): GWidget | null {
+    return this.input?.oldGWidget ?? null;
   }
 
   setActionGWidget(w: GWidget | null): void {

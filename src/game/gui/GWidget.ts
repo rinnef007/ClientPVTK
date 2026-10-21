@@ -5,7 +5,7 @@
 // until the .t pixel fonts are ported, and focus/scrolling/input are not ported yet.
 import type { Graphics } from '../../midp/Graphics';
 import { BOTTOM, HCENTER, RIGHT, TOP, VCENTER } from '../../midp/anchor';
-import { drawBorderString, drawBoxLines, drawFrameBox, drawScrollBar, drawScrollBar2, drawImageNumber, fillArcRect, fillArcRect2, getImageSet } from '../main/GameView';
+import { drawBorderString, drawBoxLines, drawFrameBox, drawScrollBar, drawScrollBar2, getBackIcon, drawImageNumber, fillArcRect, fillArcRect2, getImageSet } from '../main/GameView';
 import type { ImageSet } from '../image/ImageSet';
 import type { Image } from '../image/Image';
 import { drawGameImage } from '../common/Utilities';
@@ -71,6 +71,8 @@ export class GWidget {
   focusFragmentTable: number[] | null = null;
   shadeColorTable: number[] | null = null;
   focusShadeColorTable: number[] | null = null;
+  /** setObj/getObj: the game object a widget shows (an item, a player…). */
+  private obj: unknown = null;
 
   constructor(vm: Int32Array) {
     this.vm = vm;
@@ -110,6 +112,12 @@ export class GWidget {
   }
   isFocus(): boolean {
     return this.isGWidgetSetting(SETTING_IS_FOCUS);
+  }
+  setObj(o: unknown): void {
+    this.obj = o;
+  }
+  getObj(): unknown {
+    return this.obj;
   }
   setFocus(v: boolean): void {
     this.setGWidgetSetting(SETTING_IS_FOCUS, v);
@@ -1337,6 +1345,8 @@ export class GLabel extends GWidget {
   bgFrameSelectIndex = 0;
   bgAnchor = 0;
   underLineColorTable: number[] | null = null;
+  powerLabel: PowerString | null = null;
+  isFocusLabelOffset: number[] | null = null;
   /** Marquee state: text x shift, pixels per step and ticks between steps. */
   scrollOffset = 0;
   speed = 3;
@@ -1442,11 +1452,27 @@ export class GLabel extends GWidget {
   }
 
   protected getBaseFontHeight(): number {
-    return uiFont.height;
+    return this.powerLabel != null ? this.powerLabel.height : uiFont.height;
   }
 
   protected getStringWidth(): number {
+    if (this.powerLabel != null) return this.powerLabel.width;
     return this.label == null ? 0 : uiFont.stringWidth(this.label);
+  }
+
+  /** Markup text drawn instead of the plain label (which must still be non-null to paint). */
+  setPowerText(s: string): void {
+    this.powerLabel = PowerString.createPowerString(s, uiFont);
+    this.resetSize();
+    this.setScroll();
+  }
+
+  getText(): string | null {
+    return this.label;
+  }
+
+  setIsFocusLabelOffset(o: number[] | null): void {
+    this.isFocusLabelOffset = o;
   }
 
   /** Minimum size grows to fit the text (drives H/V layouts). */
@@ -1518,7 +1544,8 @@ export class GLabel extends GWidget {
       ty = y;
     }
     g.clipRect(x, y, w, h);
-    this.paintLabel(g, tx, ty, anchor === 0 ? TOP | 4 : anchor);
+    const off = this.isFocus() ? this.isFocusLabelOffset : null;
+    this.paintLabel(g, tx + (off?.[0] ?? 0), ty + (off?.[1] ?? 0), anchor === 0 ? TOP | 4 : anchor);
     if (this.isSetting(512)) {
       g.setColor(this.isFocus() ? this.selectLabelColor : this.labelColor);
       g.drawLine(x + 1, y + h - 1, x + w - 1, y + h - 1);
@@ -1527,8 +1554,13 @@ export class GLabel extends GWidget {
 
   /** GLabel.paintLabel: system-font text with an optional 4-way or drop-shadow border. */
   protected paintLabel(g: Graphics, tx: number, ty: number, anchor: number): void {
-    if (!this.label) return;
     const color = this.isFocus() ? this.selectLabelColor : this.labelColor;
+    if (this.powerLabel != null) {
+      g.setColor(color);
+      this.powerLabel.draw(g, tx, ty, anchor);
+      return;
+    }
+    if (!this.label) return;
     const border = this.isFocus() ? this.selectBorderColor : this.borderColor;
     if (border !== -1 && this.isSetting(128)) {
       g.setColor(border);
@@ -1619,6 +1651,9 @@ export class GIcon extends GPixelLabel {
   isClear = false;
   hasMask = false;
   maskRgb = 0;
+  /** Star / gem counts (drawn with GameView.starSet, not ported yet). */
+  starnum = 0;
+  gennum = 0;
 
   constructor(vm: Int32Array) {
     super(vm);
@@ -1648,6 +1683,27 @@ export class GIcon extends GPixelLabel {
     this.backColorIndex = backColor;
   }
 
+  setNumber(n: number): void {
+    this.number = n;
+  }
+
+  /** Greys the icon out (default colour 0x8F000000). */
+  setMask(on: boolean, rgb?: number): void {
+    this.hasMask = on;
+    if (rgb !== undefined) this.maskRgb = rgb;
+    else if (this.maskRgb === 0) this.maskRgb = -1895825408;
+  }
+
+  clearsetIconStarNum(): void {
+    this.gennum = 0;
+    this.starnum = 0;
+  }
+
+  setIconStarNum(n: number, kind: number): void {
+    if (kind === 0) this.gennum = n;
+    else if (kind === 1) this.starnum = n;
+  }
+
   /** ICON_NUM_DATA: a count drawn bottom-right with image digits. */
   setNumberData(setId: number, index: number, space: number, right: number, bottom: number): void {
     this.numberRes = getImageSet(setId);
@@ -1671,7 +1727,17 @@ export class GIcon extends GPixelLabel {
       const x = vm[VM.OFFSET_X] + vm[VM.XX] + ((vm[VM.W] / 2) | 0);
       let y = vm[VM.OFFSET_Y] + vm[VM.YY];
       if (this.anchor2 & 2) y += (vm[VM.H] / 2) | 0;
-      this.iconRes.drawFrame(g, this.iconIndex, x, y, this.trans, this.anchor2);
+      let a = this.anchor2;
+      if (this.backColorIndex >= 0) {
+        // The grade back plate under the icon; a top-anchored icon is then centred on it.
+        const back = getBackIcon(this.backColorIndex);
+        drawGameImage(g, back, x, y, this.anchor2);
+        if (this.anchor2 & 16 && back != null) {
+          y += back.getHeight() >> 1;
+          a = (a & ~16) | 2;
+        }
+      }
+      this.iconRes.drawFrame(g, this.iconIndex, x, y, this.trans, a);
     }
     if (this.numberRes != null && this.numberIndex >= 0 && this.number > 0) {
       drawImageNumber(g, this.numberRes, this.numberIndex, String(this.number),

@@ -71,7 +71,7 @@ function create(node: UINode): GWidget {
   }
 }
 
-function apply(w: GWidget, c: UICall, lib: UINode[]): void {
+function apply(w: GWidget, c: UICall, lib: UINode[], register?: (w: GWidget) => void): void {
   const a = c.args as never[];
   const n = (i: number) => a[i] as unknown as number;
   switch (c.code) {
@@ -138,6 +138,7 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
         if (i * 2 + 1 < pos.length) cl.setPos(pos[i * 2], pos[i * 2 + 1]);
         if (i < events.length) cl.setEventType(events[i]);
         w.add(cl);
+        register?.(cl); // GContainer.batchAdd registers each copy
       }
       break;
     }
@@ -236,12 +237,12 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
 }
 
 /**
- * XmlParse.parseUI: create, apply the recorded calls, register (UIHandler.addEventGWidget, parent
- * before children), then build the children. Widgets cloned by ADDLIB are not registered.
+ * XmlParse.parseUI: create, apply the recorded calls (ADDLIB copies register themselves), register
+ * the widget (UIHandler.addEventGWidget), then build and register the children.
  */
 export function build(node: UINode, lib: UINode[], register?: (w: GWidget) => void): GWidget {
   const w = create(node);
-  for (const c of node.calls) apply(w, c, lib);
+  for (const c of node.calls) apply(w, c, lib, register);
   register?.(w);
   for (const child of node.children) {
     const cw = build(child, lib, register);
