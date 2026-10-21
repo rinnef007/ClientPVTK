@@ -15,10 +15,8 @@ import { DEFAULT_APPEARANCE, SPRITE_MAN_HEAD, createHeadSpriteByIcon, createSpri
 import { getAssetFS } from '../game/common/Utilities';
 import { imageSetFiles } from '../game/main/GameView';
 import { isMotion, uiClock, uiFont, uiScreen } from '../game/gui/GWidget';
-import { PIXEL_FONT_SIZES } from '../game/string/PixelFont';
-import { parseUIFile } from '../game/ui/XmlParse';
-import { collectImageSets } from '../game/ui/UIPreview';
-import { collectSpriteIds } from '../game/ui/UIBuilder';
+import { TYPE_ALERT, UIHandler, preloadUI } from '../game/ui/UIHandler';
+import '../game/ui/screens';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles } from '../game/ui/WorldHud';
 import * as WorldMessage from '../game/main/WorldMessage';
 import { msgEnv } from '../game/core/PowerMsg';
@@ -85,15 +83,11 @@ export class MapScene implements Scene {
   /** UIHandler.createUIFromXML(211) with everything it draws preloaded. */
   private async loadHud(): Promise<WorldHud | null> {
     const fs = getAssetFS();
-    const path = `ui/${UI_WORLD_PANEL}.ui`;
-    await fs.preload([path, ...PIXEL_FONT_SIZES.map((n) => `common/${n}.t`)]);
-    const data = fs.get(path);
-    if (!data) return null;
-    const f = parseUIFile(data);
-    await fs.preload([...[...collectImageSets(f), ...HUD_EXTRA_SETS].flatMap(imageSetFiles), ...petIconFiles(DEMO_PET.petIcon)]);
-    await Promise.all([...collectSpriteIds(f), SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
+    await preloadUI(UI_WORLD_PANEL, TYPE_ALERT);
+    await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET.petIcon)]);
+    await Promise.all([SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
     initUIEnvironment();
-    return WorldHud.create(data);
+    return WorldHud.create();
   }
 
   private async load(): Promise<void> {
@@ -169,9 +163,6 @@ export class MapScene implements Scene {
       WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
       WorldMessage.addNoticeMsg('Chào mừng đến bản đồ thử (offline). Mọi số liệu và tin nhắn ở đây đều là dữ liệu giả.');
       WorldMessage.addPointMsg('Nhiệm vụ: nói chuyện với NPC có dấu ! (xem chấm nhấp nháy trên bản đồ nhỏ).');
-      hud.input.onAction = (w) => {
-        if (w != null) WorldMessage.addPromptMsg(`HUD: sự kiện ${w.getEventType()} (chưa port hành động)`);
-      };
     }
     const quest = npcs[QUEST_NPC];
     Object.assign(GameWorld.missionRadar, { mapId: map.getMapID(), gx: quest.sourceGx, gy: quest.sourceGy });
@@ -182,10 +173,16 @@ export class MapScene implements Scene {
   }
 
   update(input: InputState): void {
-    if (input.key === KEY_SOFT_RIGHT) return this.leave();
-    if (input.key === KEY_SOFT_LEFT) this.map?.setTag(TAG_MAP_IMG_OFF, !this.map.isTag(TAG_MAP_IMG_OFF));
-    if (input.key === KEY_FIRE) this.showGrid = !this.showGrid;
-    if (input.key === KEY_STAR) this.showHud = !this.showHud;
+    // UIHandler.logic: an open screen takes the keys and taps; the world keeps running behind it.
+    const uiOpen = UIHandler.hasUI();
+    if (uiOpen) UIHandler.logic(input.key, input.pointers);
+    const key = uiOpen ? 0 : input.key;
+    const holding = uiOpen ? 0 : input.holding;
+    const pointers = uiOpen ? [] : input.pointers;
+    if (key === KEY_SOFT_RIGHT) return this.leave();
+    if (key === KEY_SOFT_LEFT) this.map?.setTag(TAG_MAP_IMG_OFF, !this.map.isTag(TAG_MAP_IMG_OFF));
+    if (key === KEY_FIRE) this.showGrid = !this.showGrid;
+    if (key === KEY_STAR) this.showHud = !this.showHud;
     uiClock.tick++;
     WorldMessage.logic();
     if (this.hud && uiClock.tick % 80 === 0) {
@@ -195,12 +192,12 @@ export class MapScene implements Scene {
       WorldMessage.addMsg(m);
     }
     // Full repaint of the back buffer, e.g. to compare against the incremental scroll path.
-    if (input.key === KEY_POUND) this.map?.setTag(TAG_FORCE_PAINT, true);
+    if (key === KEY_POUND) this.map?.setTag(TAG_FORCE_PAINT, true);
 
     // GameCanvas.pointerReleased → pointReleasedFlag; taps on the HUD or soft keys are not moves.
     let released: [number, number] | null = null;
     const hud = this.showHud ? this.hud : null;
-    for (const p of input.pointers) {
+    for (const p of pointers) {
       if (p.type !== 'up') continue;
       if (hud) {
         // WorldPanel.handleWorldPanelMouse: HUD widgets take the tap before the world does.
@@ -222,7 +219,7 @@ export class MapScene implements Scene {
     if (GameWorld.logicNPCs()) {
       WorldPanel.clearMyMove();
     } else {
-      WorldPanel.handleKey(input.holding, released);
+      WorldPanel.handleKey(holding, released);
       map.setCameraToPlayer(me);
     }
     if (released && this.pointerTemplate) {
@@ -253,6 +250,7 @@ export class MapScene implements Scene {
     GameWorld.setMyPlayer(null);
     GameWorld.setNpcList([]);
     GameWorld.missionRadar.mapId = -1;
+    UIHandler.closeAllUI();
     WorldMessage.clearAll();
     GameWorld.otherModels.clear();
     this.ctx.go(new MenuScene(this.ctx));
@@ -279,6 +277,8 @@ export class MapScene implements Scene {
       g.setClip(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
       // GameCanvas.paint: world (with HUD), bottom chat, dialogs, then notices/prompts on top.
       WorldMessage.paintBottomUIMsg(g);
+      g.setFontSize(FONT_MEDIUM);
+      UIHandler.drawAll(g);
       WorldMessage.paintUpUIMsg(g);
       return;
     }

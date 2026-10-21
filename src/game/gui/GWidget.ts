@@ -318,6 +318,23 @@ export class GContainer extends GWidget {
     this.children.push(w);
   }
 
+  remove(w: GWidget): void {
+    const i = this.children.indexOf(w);
+    if (i >= 0) this.children.splice(i, 1);
+    const win = w.getParentWindow();
+    if (win != null && win.focusWidget === w) win.focusWidget = null;
+  }
+
+  getChildNum(): number {
+    return this.children.length;
+  }
+
+  /** GContainer.show: re-place children and lay out again. */
+  show(): void {
+    this.setAbs();
+    this.layout();
+  }
+
   setLayoutMode(mode: number, hgap: number, vgap: number, align: number, a: number, b: number): void {
     this.layoutData = [mode, hgap, vgap, align, a, b];
   }

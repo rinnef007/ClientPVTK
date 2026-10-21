@@ -235,11 +235,16 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
   }
 }
 
-export function build(node: UINode, lib: UINode[]): GWidget {
+/**
+ * XmlParse.parseUI: create, apply the recorded calls, register (UIHandler.addEventGWidget, parent
+ * before children), then build the children. Widgets cloned by ADDLIB are not registered.
+ */
+export function build(node: UINode, lib: UINode[], register?: (w: GWidget) => void): GWidget {
   const w = create(node);
   for (const c of node.calls) apply(w, c, lib);
+  register?.(w);
   for (const child of node.children) {
-    const cw = build(child, lib);
+    const cw = build(child, lib, register);
     if (w instanceof GContainer) w.add(cw);
   }
   return w;

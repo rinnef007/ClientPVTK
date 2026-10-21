@@ -3,9 +3,7 @@
 // mini map by GameMap.initSmallMapWidth (as GameCanvas does when entering the world).
 // Without a server the player numbers come from `HudPlayerInfo` (made-up values in the scene)
 // and every server-driven icon flag (mail, team, events, shops…) is off.
-import { parseUIFile } from './XmlParse';
-import { buildAndShow } from './UIBuilder';
-import { UIInput } from './UIInput';
+import { UIHandler } from './UIHandler';
 import { GContainer, GGameBar, GGameIcon, GIcon, GImageNumer, GWidget } from '../gui/GWidget';
 import type { Image } from '../image/Image';
 import { readPNGFile } from '../common/Utilities';
@@ -119,23 +117,26 @@ export function getGWidgetByEventType(root: GWidget, ev: number): GWidget | null
 }
 
 export class WorldHud {
-  readonly input: UIInput;
+  private constructor(readonly ui: UIHandler) {}
 
-  private constructor(readonly root: GContainer) {
-    this.input = new UIInput(root);
+  get root(): GContainer {
+    return this.ui.uiFrame!;
   }
 
-  static create(data: Uint8Array): WorldHud | null {
-    const root = buildAndShow(parseUIFile(data));
-    if (!(root instanceof GContainer)) return null;
-    const hud = new WorldHud(root);
+  /** GameCanvas: createUIFromXML(211), setDefaultListener, show (ui/211 must be preloaded). */
+  static create(): WorldHud | null {
+    const ui = UIHandler.createUIFromXML(UI_WORLD_PANEL);
+    if (ui.uiFrame == null) return null;
+    ui.setDefaultListener();
+    ui.show();
+    const hud = new WorldHud(ui);
     hud.updateWorldIconPoint();
     hud.get(EVENT_ALL_AGE_TIP)?.setShow(false); // initAgeIconTip
     return hud;
   }
 
   get(ev: number): GWidget | null {
-    return getGWidgetByEventType(this.root, ev);
+    return this.ui.getGWidgetByEventType(ev);
   }
 
   updateWorldIconPoint(): void {
@@ -200,8 +201,8 @@ export class WorldHud {
   handleWorldPanelMouse(x: number, y: number): boolean {
     const w = this.root.searchPressGWidget(x, y);
     if (w == null) return false;
-    this.input.actionGWidget = w;
-    this.input.onAction(w);
+    this.ui.setActionGWidget(w);
+    this.ui.notifyLayerAction(0);
     return true;
   }
 }
