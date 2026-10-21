@@ -61,6 +61,30 @@ export class Image {
     return img;
   }
 
+  /** Image.createRGBImage(argb, w, h, true): an immutable image from ARGB pixels. */
+  static createRGBImage(argb: ArrayLike<number>, w: number, h: number): Image {
+    const img = new Image(w, h);
+    if (typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const data = ctx.createImageData(w, h);
+        for (let i = 0; i < w * h; i++) {
+          const c = argb[i];
+          data.data[i * 4] = (c >> 16) & 0xff;
+          data.data[i * 4 + 1] = (c >> 8) & 0xff;
+          data.data[i * 4 + 2] = c & 0xff;
+          data.data[i * 4 + 3] = (c >>> 24) & 0xff;
+        }
+        ctx.putImageData(data, 0, 0);
+      }
+      img.source = canvas;
+    }
+    return img;
+  }
+
   getGraphics(): Graphics {
     if (!this.graphics) throw new Error('Immutable image');
     return this.graphics;

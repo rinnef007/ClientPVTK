@@ -16,6 +16,12 @@ let tail = 0;
 export function setGameMap(m: GameMap | null): void {
   gameMap = m;
   GameMap.npcAt = (gx, gy) => getNPC(gx, gy) != null;
+  GameMap.smallMapInfo = () => ({
+    me: myPlayer == null ? null : { gx: myPlayer.getGx(), gy: myPlayer.getGy(), dir: myPlayer.getDir() },
+    npcs: npcList.map((n) => ({
+      gx: n.getGx(), gy: n.getGy(), npcType: n.npcType, sign: n.getSign(), jumpIcon: n.isJumpIcon(), visible: n.isVisible(),
+    })),
+  });
 }
 
 export function setMyPlayer(p: Player | null): void {

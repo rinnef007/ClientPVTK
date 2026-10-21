@@ -12,6 +12,9 @@ export const NPC_TYPE_JUMP = 8;
 
 export class NPC extends Model {
   npcType = 0;
+  /** Quest sign shown over the NPC and on the mini map (icon2: 1 !, 2 ?, 3 …). */
+  icon2 = 0;
+  status = 0;
   rangeX = 0;
   rangeY = 0;
   sourceGx = 0;
@@ -22,6 +25,14 @@ export class NPC extends Model {
 
   constructor() {
     super(TYPE_NPC);
+  }
+
+  getSign(): number {
+    return this.icon2;
+  }
+  /** Status bit 32: drawn on the mini map with the jump marker. */
+  isJumpIcon(): boolean {
+    return (this.status & 32) !== 0;
   }
 
   isVisible(): boolean {

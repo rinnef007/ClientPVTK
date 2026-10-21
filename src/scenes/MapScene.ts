@@ -1,6 +1,6 @@
-import { LEFT, TOP } from '../midp/anchor';
-import { FONT_SMALL, type Graphics } from '../midp/Graphics';
-import { KEY_FIRE, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, type InputState } from '../midp/Input';
+import { HCENTER, LEFT, TOP } from '../midp/anchor';
+import { FONT_MEDIUM, FONT_SMALL, type Graphics } from '../midp/Graphics';
+import { KEY_FIRE, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
 import { NPC } from '../game/actor/NPC';
 import { Player } from '../game/actor/Player';
 import { Model, TYPE_PLAYER } from '../game/actor/Model';
@@ -11,13 +11,25 @@ import { GameMap, TAG_FORCE_PAINT, TAG_MAP_IMG_OFF } from '../game/map/GameMap';
 import { TEST_MAP_SPRITES, buildTestMap } from '../game/map/TestMap';
 import { TILE } from '../game/map/TileLayer';
 import { GameSprite, preloadSprite, resolveSprite } from '../game/sprite/GameSprite';
-import { DEFAULT_APPEARANCE, createSpriteByIcon, encodeIcons, type Appearance } from '../game/sprite/SpriteIcon';
+import { DEFAULT_APPEARANCE, SPRITE_MAN_HEAD, createHeadSpriteByIcon, createSpriteByIcon, encodeIcons, type Appearance } from '../game/sprite/SpriteIcon';
+import { getAssetFS } from '../game/common/Utilities';
+import { imageSetFiles } from '../game/main/GameView';
+import { uiClock } from '../game/gui/GWidget';
+import { PIXEL_FONT_SIZES } from '../game/string/PixelFont';
+import { parseUIFile } from '../game/ui/XmlParse';
+import { collectImageSets } from '../game/ui/UIPreview';
+import { collectSpriteIds } from '../game/ui/UIBuilder';
+import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud } from '../game/ui/WorldHud';
 import { currentAppearance } from './DressingRoomScene';
 import { MenuScene } from './MenuScene';
 import { COLOR_TEXT, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
-import { SOFTKEY_H, softKeyAt } from './ui';
+import { SOFTKEY_H, initUIEnvironment, softKeyAt } from './ui';
 
 const HUD_H = 20;
+/** Image sets the HUD code uses beyond those named in ui/211: mini map marks, small digits, combat digits. */
+const HUD_EXTRA_SETS = [4, 1002, 238];
+/** Made-up numbers for the HUD: there is no server to send the real player data. */
+const DEMO_STATS = { level: 25, hp: 820, maxHp: 1000, mp: 310, maxMp: 500, exp: 4200, maxExp: 10000, combatPoint: 12345, value118: 0 };
 /** GameSprite.SPRITE_POINTER_EFFECT: the ripple shown where the player taps. */
 const SPRITE_POINTER_EFFECT = 1216;
 const PET_SPRITES = [501, 505, 509];
@@ -50,9 +62,27 @@ export class MapScene implements Scene {
   private nextServerMove = 0;
   private pointerFx: { sprite: GameSprite; x: number; y: number } | null = null;
   private pointerTemplate: GameSprite | null = null;
+  private hud: WorldHud | null = null;
+  private showHud = true;
+  private hudMessage = '';
+  private hudMessageUntil = 0;
 
   constructor(private readonly ctx: Context) {
     void this.load();
+  }
+
+  /** UIHandler.createUIFromXML(211) with everything it draws preloaded. */
+  private async loadHud(): Promise<WorldHud | null> {
+    const fs = getAssetFS();
+    const path = `ui/${UI_WORLD_PANEL}.ui`;
+    await fs.preload([path, ...PIXEL_FONT_SIZES.map((n) => `common/${n}.t`)]);
+    const data = fs.get(path);
+    if (!data) return null;
+    const f = parseUIFile(data);
+    await fs.preload([...collectImageSets(f), ...HUD_EXTRA_SETS].flatMap(imageSetFiles));
+    await Promise.all([...collectSpriteIds(f), SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
+    initUIEnvironment();
+    return WorldHud.create(data);
   }
 
   private async load(): Promise<void> {
@@ -67,7 +97,8 @@ export class MapScene implements Scene {
       this.status = 'Không dựng được nhân vật';
       return;
     }
-    map.initGameMapData(SCREEN_WIDTH, SCREEN_HEIGHT, HUD_H, 0);
+    const hud = await this.loadHud();
+    map.initGameMapData(SCREEN_WIDTH, SCREEN_HEIGHT, hud ? 0 : HUD_H, 0);
     map.loadMapPalette();
     map.getPlayerLayer()?.createMapSprites();
     await map.whenImagesReady();
@@ -115,6 +146,14 @@ export class MapScene implements Scene {
     map.models = [me, ...others, ...npcs];
     map.camera = me;
     map.init();
+    if (hud) {
+      const [icon1] = encodeIcons(currentAppearance);
+      hud.updateWorldPlayerInfoUI({ ...DEMO_STATS, headSprite: await resolveSprite(() => createHeadSpriteByIcon(icon1)) });
+      const mini = hud.get(EVENT_ALL_INFO_SMALL_MAP);
+      GameMap.initSmallMapWidth(mini, SCREEN_WIDTH, map);
+      hud.input.onAction = (w) => this.say(w == null ? '' : `HUD: sự kiện ${w.getEventType()} (chưa port hành động)`);
+    }
+    this.hud = hud;
     this.others = others;
     this.map = map;
   }
@@ -123,13 +162,21 @@ export class MapScene implements Scene {
     if (input.key === KEY_SOFT_RIGHT) return this.leave();
     if (input.key === KEY_SOFT_LEFT) this.map?.setTag(TAG_MAP_IMG_OFF, !this.map.isTag(TAG_MAP_IMG_OFF));
     if (input.key === KEY_FIRE) this.showGrid = !this.showGrid;
+    if (input.key === KEY_STAR) this.showHud = !this.showHud;
+    uiClock.tick++;
     // Full repaint of the back buffer, e.g. to compare against the incremental scroll path.
     if (input.key === KEY_POUND) this.map?.setTag(TAG_FORCE_PAINT, true);
 
     // GameCanvas.pointerReleased → pointReleasedFlag; taps on the HUD or soft keys are not moves.
     let released: [number, number] | null = null;
+    const hud = this.showHud ? this.hud : null;
     for (const p of input.pointers) {
       if (p.type !== 'up') continue;
+      if (hud) {
+        // WorldPanel.handleWorldPanelMouse: HUD widgets take the tap before the world does.
+        if (!hud.handleWorldPanelMouse(p.x, p.y)) released = [p.x, p.y];
+        continue;
+      }
       if (softKeyAt(p.x, p.y) === KEY_SOFT_RIGHT) return this.leave();
       if (p.y > HUD_H && p.y < SCREEN_HEIGHT - SOFTKEY_H) released = [p.x, p.y];
     }
@@ -172,6 +219,11 @@ export class MapScene implements Scene {
     }
   }
 
+  private say(msg: string): void {
+    this.hudMessage = msg;
+    this.hudMessageUntil = Date.now() + 2500;
+  }
+
   private leave(): void {
     GameWorld.setMyPlayer(null);
     GameWorld.setNpcList([]);
@@ -189,15 +241,29 @@ export class MapScene implements Scene {
       g.drawString(this.status, 8, 8, LEFT | TOP);
       return;
     }
-    map.draw(g, true);
+    const hud = this.showHud ? this.hud : null;
+    map.draw(g, hud != null);
     if (this.showGrid) this.drawCollision(g, map);
     const fx = this.pointerFx;
     if (fx && fx.sprite.getCurAnimationLoopTime() !== 0) fx.sprite.draw(g, fx.x, fx.y);
+    if (hud) {
+      g.setFontSize(FONT_MEDIUM);
+      hud.root.paint(g);
+      g.setClip(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+      if (Date.now() < this.hudMessageUntil && this.hudMessage) {
+        g.setFontSize(FONT_SMALL);
+        g.setColor(0xc0000000);
+        g.fillRect(0, SCREEN_HEIGHT / 2 - 12, SCREEN_WIDTH, 22);
+        g.setColor(0xffff00);
+        g.drawString(this.hudMessage, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 9, TOP | HCENTER);
+      }
+      return;
+    }
     g.setColor(0x10141c);
     g.fillRect(0, 0, SCREEN_WIDTH, HUD_H);
     g.setFontSize(FONT_SMALL);
     g.setColor(COLOR_TEXT);
-    g.drawString(`Ô (${me.getGx()},${me.getGy()}) · chạm để đi · Enter lưới · Esc thoát`, 4, 3, LEFT | TOP);
+    g.drawString(`Ô (${me.getGx()},${me.getGy()}) · chạm để đi · Enter lưới · * HUD · Esc thoát`, 4, 3, LEFT | TOP);
   }
 
   private drawCollision(g: Graphics, map: GameMap): void {

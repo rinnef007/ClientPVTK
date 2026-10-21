@@ -1,5 +1,7 @@
 import { HCENTER, LEFT, TOP, VCENTER } from '../midp/anchor';
 import { FONT_LARGE, FONT_MEDIUM, FONT_SMALL, type Graphics } from '../midp/Graphics';
+import { uiFont, uiScreen } from '../game/gui/GWidget';
+import { uiMetrics } from '../game/ui/XmlParse';
 import {
   COLOR_BG,
   COLOR_BORDER,
@@ -93,4 +95,18 @@ export function drawParagraph(g: Graphics, text: string, x: number, y: number, m
   const lines = wrap(g, text, maxW);
   lines.forEach((l, i) => g.drawString(l, x, y + i * g.getFontHeight(), LEFT | TOP));
   return y + lines.length * g.getFontHeight();
+}
+
+/**
+ * Screen size and text metrics for the gui widgets (GameCanvas.SCREEN_* and Utilities.FONT):
+ * labels size themselves from these while a .ui tree is built.
+ */
+export function initUIEnvironment(): void {
+  uiMetrics.screenWidth = uiScreen.width = SCREEN_WIDTH;
+  uiMetrics.screenHeight = uiScreen.height = SCREEN_HEIGHT;
+  const measure = document.createElement('canvas').getContext('2d')!;
+  measure.font = `${FONT_MEDIUM}px Roboto, Arial, "Liberation Sans", Helvetica, sans-serif`;
+  uiFont.height = FONT_MEDIUM + 2;
+  uiMetrics.fontHeight = uiFont.height;
+  uiFont.stringWidth = (t) => Math.ceil(measure.measureText(t).width);
 }

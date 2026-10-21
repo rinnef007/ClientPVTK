@@ -11,8 +11,6 @@ import {
   SETTING_KEY_RIGHT,
   SETTING_KEY_UP,
   uiClock,
-  uiFont,
-  uiScreen,
   type GWidget,
 } from '../game/gui/GWidget';
 import { UIInput } from '../game/ui/UIInput';
@@ -22,10 +20,10 @@ import { createSpriteByIcon, encodeIcons } from '../game/sprite/SpriteIcon';
 import { currentAppearance } from './DressingRoomScene';
 import { collectImageSets } from '../game/ui/UIPreview';
 import { PIXEL_FONT_SIZES } from '../game/string/PixelFont';
-import { parseUIFile, uiMetrics, type UIFile } from '../game/ui/XmlParse';
+import { parseUIFile, type UIFile } from '../game/ui/XmlParse';
 import { MenuScene } from './MenuScene';
 import { COLOR_DIM, COLOR_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
-import { softKeyAt } from './ui';
+import { initUIEnvironment, softKeyAt } from './ui';
 
 const INFO_H = 34;
 
@@ -49,14 +47,7 @@ export class UIViewerScene implements Scene {
       .filter((n) => n.endsWith('.ui'))
       .map((n) => Number(n.slice(0, -3)))
       .sort((a, b) => a - b);
-    uiMetrics.screenWidth = uiScreen.width = SCREEN_WIDTH;
-    uiMetrics.screenHeight = uiScreen.height = SCREEN_HEIGHT;
-    // Labels size themselves from text metrics while the tree is built (GLabel.resetSize).
-    const measure = document.createElement('canvas').getContext('2d')!;
-    measure.font = `${FONT_MEDIUM}px Roboto, Arial, "Liberation Sans", Helvetica, sans-serif`;
-    uiFont.height = FONT_MEDIUM + 2;
-    uiMetrics.fontHeight = uiFont.height;
-    uiFont.stringWidth = (t) => Math.ceil(measure.measureText(t).width);
+    initUIEnvironment();
     void this.load();
   }
 

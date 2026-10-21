@@ -8,6 +8,8 @@ import { setPlKey } from '../common/Utilities';
 import { GameImage } from '../image/GameImage';
 import { Image } from '../image/Image';
 import * as ResourceHandler from '../main/ResourceHandler';
+import { drawBorderString, drawImageNumber, getImageSet } from '../main/GameView';
+import { rectIn } from '../common/Tool';
 import type { MapLayer } from './MapLayer';
 import { PixelLayer } from './PixelLayer';
 import { PlayerLayer, type MapModel } from './PlayerLayer';
@@ -34,6 +36,11 @@ const reverseDir = (d: number) => (d === 0 ? 1 : d === 1 ? 0 : d === 2 ? 3 : d =
 export interface CameraTarget {
   getPx(): number;
   getPy(): number;
+}
+
+export interface SmallMapInfo {
+  me: { gx: number; gy: number; dir: number } | null;
+  npcs: { gx: number; gy: number; npcType: number; sign: number; jumpIcon: boolean; visible: boolean }[];
 }
 
 export class GameMap {
@@ -94,6 +101,15 @@ export class GameMap {
   nextSearchPosY: Int8Array = new Int8Array(0);
   /** GameWorld.getNPC(gx, gy) != null; injected by GameWorld to keep this module standalone. */
   static npcAt: (gx: number, gy: number) => boolean = () => false;
+  /** What the mini map shows; GameWorld fills this in (avoids an import cycle). */
+  static smallMapInfo: () => SmallMapInfo = () => ({ me: null, npcs: [] });
+  /** Mini map box (GameMap.initSmallMapWidth: the HUD's EVENT_ALL_INFO_SMALL_MAP widget). */
+  static SMALL_SHOW_MAP_WIDTH = 0;
+  static MAP_X = 0;
+  static MAP_Y = 0;
+  private smallMap: Image | null = null;
+  private mapSpaceX = 2;
+  private mapSpaceY = 2;
   /** Characters to draw on the player layer (GameWorld.otherModels + NPCs + myPlayer in Java). */
   models: MapModel[] = [];
   camera: CameraTarget | null = null;
@@ -398,6 +414,121 @@ export class GameMap {
     this.oldOffsetY = this.offsetY;
     this.drawMapBuffer(g, this.topImgHeight);
     this.drawLayers(g, this.playerLayerIndex, this.layers.length, withTop, DRAW_NORMAL_MAP);
+    if (withTop) this.drawSmallMap(g);
+  }
+
+  /** Places the mini map on the HUD widget, or top-right when there is no HUD. */
+  static initSmallMapWidth(widget: { getW(): number; getAbsX(): number; getAbsY(): number } | null, screenW: number, map: GameMap | null): void {
+    if (widget == null) {
+      GameMap.MAP_X = screenW - GameMap.SMALL_SHOW_MAP_WIDTH - 2;
+      GameMap.MAP_Y = 2;
+    } else {
+      GameMap.SMALL_SHOW_MAP_WIDTH = widget.getW();
+      GameMap.MAP_X = widget.getAbsX();
+      GameMap.MAP_Y = widget.getAbsY();
+    }
+    map?.initSmallMap();
+  }
+
+  initSmallMap(): void {
+    if (this.layers == null || this.mapImages == null || this.smallMap != null) return;
+    this.smallMap = this.createSimpleSamllMap(this.mapColumns * 2 + 4, this.mapRows * 2 + 4);
+  }
+
+  /** 2 px per cell: walkable cells light, the rest (and the margin) dark; centred if smaller than the box. */
+  private createSimpleSamllMap(w: number, h: number): Image {
+    this.mapSpaceX = 2;
+    this.mapSpaceY = 2;
+    const box = GameMap.SMALL_SHOW_MAP_WIDTH;
+    if (w < box) {
+      this.mapSpaceX = (((box - w) / 2) | 0) + 2;
+      w = box;
+    }
+    if (h < box) {
+      this.mapSpaceY = (((box - h) / 2) | 0) + 2;
+      h = box;
+    }
+    const px = new Int32Array(w * h).fill(-714911416);
+    for (let gy = 0; gy < this.mapRows; gy++) {
+      for (let gx = 0; gx < this.mapColumns; gx++) {
+        if (!this.isCanPass(gx, gy)) continue;
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) px[(this.mapSpaceY + gy * 2 + dy) * w + this.mapSpaceX + gx * 2 + dx] = -711423127;
+        }
+      }
+    }
+    return Image.createRGBImage(px, w, h);
+  }
+
+  /**
+   * Mini map scrolled to keep the player centred, NPC markers from image set 4 (GameView.mapSet),
+   * the player arrow, the cell coordinates in set 1002 above it and the map name below.
+   * Not ported: the mission radar marker and the "hide mini map" player setting.
+   */
+  private drawSmallMap(g: Graphics): void {
+    const { me, npcs } = GameMap.smallMapInfo();
+    if (me == null) return;
+    const set = getImageSet(4);
+    const mx = GameMap.MAP_X;
+    const my = GameMap.MAP_Y;
+    const img = this.smallMap;
+    const has = img != null && set != null;
+    let bw = 0;
+    let bh = 0;
+    if (has) {
+      bw = GameMap.SMALL_SHOW_MAP_WIDTH > 0 ? GameMap.SMALL_SHOW_MAP_WIDTH : img.getWidth();
+      bh = GameMap.SMALL_SHOW_MAP_WIDTH > 0 ? GameMap.SMALL_SHOW_MAP_WIDTH : img.getHeight();
+      g.setColor(0);
+      g.drawRect(mx - 2, my - 2, bw + 3, bh + 3);
+      g.setColor(0xffffff);
+      g.drawRect(mx - 1, my - 1, bw + 1, bh + 1);
+      g.setClip(mx, my, bw, bh);
+      const px = me.gx * 2;
+      const py = me.gy * 2;
+      const cx = this.mapSpaceX + px;
+      const cy = this.mapSpaceY + py;
+      const ix = cx > bw >> 1 ? mx - (cx + (bw >> 1) >= img.getWidth() ? img.getWidth() - bw : cx - (bw >> 1)) : mx;
+      const iy = cy > bh >> 1 ? my - (cy + (bh >> 1) >= img.getHeight() ? img.getHeight() - bh : cy - (bh >> 1)) : my;
+      g.drawImage(img, ix, iy, 20);
+      const ox = ix + this.mapSpaceX;
+      const oy = iy + this.mapSpaceY;
+      for (const n of npcs) {
+        if (!n.visible) continue;
+        const x = ox + n.gx * 2;
+        const y = oy + n.gy * 2;
+        if (!rectIn(mx, my, bw, bh, x, y)) continue;
+        if (n.npcType === 1) continue; // monsters only show with the "show monsters" setting
+        if (n.npcType === 3 || n.npcType === 8) {
+          set.drawFrame(g, 4, x, y, 0, 3);
+          continue;
+        }
+        set.drawFrame(g, n.jumpIcon ? 4 : 7, x, y, 0, 3);
+        const signFrame = { 1: 0, 2: 5, 3: 1 }[n.sign];
+        if (signFrame !== undefined) set.drawFrame(g, signFrame, x, y, 0, 3);
+      }
+      const trans = ({ 0: 5, 1: 3, 3: 4 } as Record<number, number>)[me.dir] ?? 0;
+      set.drawFrame(g, 2, ox + px, oy + py, trans, 3);
+      g.setClip(0, 0, this.screenWidth, this.screenHeight);
+    }
+    const num = getImageSet(1002);
+    let nameY = 0;
+    if (num != null) {
+      const fw = num.getFrameWidth(0);
+      const fh = num.getFrameHeight(0);
+      const w5 = fw * 5;
+      const half = w5 >> 1;
+      let y = my - (fh >> 1);
+      const x = mx + ((bw / 2) | 0) - half;
+      g.setColor(0xffffff);
+      g.fillRect(x - 1, y, w5 + 2, fh + 2);
+      y++;
+      g.setColor(0);
+      g.fillRect(x, y, w5, fh);
+      drawImageNumber(g, num, 0, `${me.gx} ${me.gy}`, x + half, y, 0, 17);
+      nameY = fh;
+    }
+    nameY = has ? my + bh : nameY + 3;
+    drawBorderString(g, 0xffffff, 789517, this.name ? this.name : '--', mx + bw, nameY, 24);
   }
 
   /** "Map images off" mode: flat colours, blocked cells darker. */

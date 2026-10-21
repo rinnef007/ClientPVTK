@@ -73,4 +73,4 @@ APK; bản đồ thử được tự sinh (`src/game/map/TestMap.ts`).
 | Xem giao diện (.ui) | ←/→ đổi giao diện, Enter ẩn/hiện chú thích (chỉ hiển thị, chưa tương tác) |
 | Thay trang phục | ↑/↓ chọn bộ phận, ←/→ đổi kiểu/màu, Enter đi/đứng, Q lật. Bản đồ thử dùng bộ đồ này |
 | Xem sprite | ←/→ đổi sprite, 1/3 nhảy ±10, ↑/↓ đổi animation, Enter lật trái/phải, Q zoom |
-| Bản đồ thử | Giữ mũi tên để đi (trượt dọc tường), click/chạm để tìm đường, Enter hiện lưới va chạm, Q bật/tắt ảnh bản đồ, = vẽ lại toàn bộ |
+| Bản đồ thử | Có HUD của game (ui/211, số liệu giả) và bản đồ nhỏ. Giữ mũi tên để đi (trượt dọc tường), click/chạm để tìm đường, chạm nút HUD để xem mã sự kiện, - bật/tắt HUD, Enter hiện lưới va chạm, Q bật/tắt ảnh bản đồ, = vẽ lại toàn bộ |

@@ -1808,6 +1808,11 @@ export class GGameIcon extends GWidget {
     this.isAction = action;
   }
 
+  setSprite(sprite: GameSprite | null): void {
+    this.sprite = sprite;
+    this.setRotate(this.isRotate);
+  }
+
   private drawSprite(g: Graphics): void {
     const vm = this.vm;
     if (this.backgroundRes != null) {
