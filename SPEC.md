@@ -300,5 +300,19 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
   - **Dấu nhiệm vụ trên bản đồ nhỏ** (`Mission.newRadarMapID/Gx/Gy`, frame 6 nhấp nháy) và dấu NPC (`icon2`, `status` bit 32) đã port; nhiệm vụ trong bản đồ thử là giả.
   - **Tin nhắn thế giới** (`WorldMessage`, `ChatMsg.getFullText/parse`, `PowerMsg`): dòng chat hiện 3 giây ở vùng 948, thông báo chạy chữ, hộp nhắc ở vùng 951, tin "điểm" ở vùng 950. Tin trong bản đồ thử là giả; chưa port: lịch sử theo kênh, cửa sổ chat, lì xì, kiểm tra đấu trường/ẩn chat, VIP QQ.
   - Chưa port: quảng cáo, các chế độ ẩn bản đồ nhỏ/hiện quái, và hành động của từng nút.
+- **Chồng màn và nút HUD (bước 4):** `game/ui/UIHandler.ts` (danh sách UI mở, bảng widget theo mã sự kiện kể cả thư viện và bản sao ADDLIB, `drawAll`, hộp thoại `alertMessage` ui/7), `game/ui/UIAction.ts` (điều phối theo loại UI, `processWorldPanelLayer`: thu gọn thanh nút 18/19, `doMenuButton` cho mọi nút HUD), `game/ui/UIObject.ts` (phân trang dữ liệu trên máy). Mỗi màn nằm trong `game/ui/screens/`:
+
+  | Nút HUD | Màn | Trạng thái |
+  |---|---|---|
+  | Item (11208) | ui/2 trang bị | Ô trang bị 0–17, túi 30 ô/trang, nền theo phẩm chất, số lượng, tên vật phẩm, tiền, nhân vật. Tab bán/phân giải/phụ ma và menu vật phẩm (ui/4) chưa port |
+  | Thuốc (11201) | ui/35 dùng vật phẩm | Danh sách vật phẩm dùng được + "Hồi phục hết", chọn để xem mô tả. Dùng vật phẩm cần server |
+  | N.vật (11209) | ui/3 nhân vật | Tab C.Bản đầy đủ, cộng/trừ điểm thuộc tính (xác nhận cần server). Các tab khác chưa port |
+  | X.Quanh (11210) | ui/73 người xung quanh | Tab Quanh (phân trang 8 dòng) và Đội (trống offline) |
+  | Chat (11205) | ui/64 lịch sử chat | Tab kênh, lịch sử theo kênh, tin mới chèn trực tiếp. Gõ tin cần server |
+  | H.Thống (11202) | ui/87 menu hệ thống | Đủ mục; "Rời game" về menu chính |
+  | Pet, N.vụ | — | Hiện đúng hộp báo của Java khi không có dữ liệu ("Bạn chưa có trân thú hoặc dụng binh!", "Chưa có Nhiệm Vụ"); màn danh sách chưa port |
+  | Map, X.Giao, T.Tựu, L.Địa, Thư, Nạp, cửa hàng, sự kiện… | — | Báo "cần kết nối server" (Java gửi yêu cầu lên server trước) |
+
+  Dữ liệu người chơi, túi đồ, vật phẩm và người chơi khác đều là **dữ liệu giả** (`game/demo/DemoData.ts`); icon vật phẩm chọn tuỳ ý từ `common/1`, không khớp loại vật phẩm thật. `getClone` dựng lại widget từ dữ liệu `.ui` (Java chép trạng thái lúc chạy; các màn chỉ nhân bản mẫu chưa bị đổi nên kết quả như nhau).
 - Font hệ thống: dùng Roboto/Arial để gần với Android, nhưng độ rộng chữ vẫn có thể lệch vài pixel.
 - `GameView.initImage` (các bộ ảnh đặc biệt như tiền, icon VIP) chưa port; mọi id đều nạp từ `common/<id>`.

@@ -93,7 +93,9 @@ export function processWorldPanelLayer(ui: UIHandler, action: number): void {
 const MENU: Record<number, [string, number?] | (() => void)> = {
   11205: ['chat', -1], // chat history
   942: ['chat', 5], // new private message → private tab
-  11207: ['mission', 12], // mission list
+  // createPlayerMissionListUI: offline the player has no missions, so Java's own alert is all
+  // that is left (the mission / milestone / vitality list itself is not ported yet).
+  11207: () => alertMessage('Chưa có Nhiệm Vụ'),
   11208: ['equip', 0], // equipment ("Item")
   11201: ['itemList', 0], // bag ("Thuốc")
   11209: ['playerInfo', -1], // character ("N.vật")
@@ -101,10 +103,14 @@ const MENU: Record<number, [string, number?] | (() => void)> = {
   944: ['playerInfo', -1], // doWorldTouristFiveLevel (non-tourist path)
   11210: ['nearPlayer', 0], // players around ("X.Quanh")
   938: ['nearPlayer', 1], // team icon
-  11203: ['mercenaryList', 2], // pets
-  946: ['petInfo'], // pet portrait
+  // createMercenaryListUI(me, 2): pets come from bag pet items and mercenaries from the server;
+  // with neither, Java shows this alert.
+  11203: () => alertMessage('Bạn chưa có trân thú hoặc dụng binh!', 'D.sách trân thú và dung binh '),
+  // createPetInfoUI(GameWorld.getPlayerPet()): the HUD pet is demo data, not a MyPet.
+  946: () => alertMessage(STR_NEED_SERVER),
   11202: ['systemSet'], // settings ("H.Thống")
-  941: ['playerEvent'], // events
+  // createPlayerEventUI lists server events (GameWorld.refreshPlayerEvent): not ported.
+  941: () => alertMessage(STR_NEED_SERVER),
   11219: () => alertMessage('Bạn chưa kết bạn'), // GameWorld.isShowRelation is false without server data
   11231: () => onQuitGame(), // "Rời game": GameWorld.doLogOutMsg(3); offline it leaves the map
 };

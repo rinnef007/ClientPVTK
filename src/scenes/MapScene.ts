@@ -21,6 +21,7 @@ import { setOnQuitGame } from '../game/ui/UIAction';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles } from '../game/ui/WorldHud';
 import * as WorldMessage from '../game/main/WorldMessage';
 import { fillDemoPlayer } from '../game/demo/DemoData';
+import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX } from '../game/actor/Player';
 import { msgEnv } from '../game/core/PowerMsg';
 import { CHANNEL_AREA, CHANNEL_SYSTEM, CHANNEL_TEAM, CHANNEL_WORLD, ChatMsg, addChatMsg, clearChatHistory } from '../game/main/ChatMsg';
 import { currentAppearance } from './DressingRoomScene';
@@ -32,7 +33,8 @@ const HUD_H = 20;
 /** Image sets the HUD code uses beyond those named in ui/211: mini map marks, small digits, combat digits. */
 const HUD_EXTRA_SETS = [4, 1002, 238, 216];
 /** Made-up numbers for the HUD: there is no server to send the real player data. */
-const DEMO_STATS = { level: 25, hp: 820, maxHp: 1000, mp: 310, maxMp: 500, exp: 4200, maxExp: 10000, combatPoint: 12345, value118: 0, level2: 0 };
+/** Made-up combat power (Player.combatPoint comes from the server). */
+const DEMO_COMBAT_POINT = 12345;
 const DEMO_PET = { level: 18, hp: 450, maxHp: 600, mp: 120, maxMp: 300, exp: 700, maxExp: 2000, petIcon: 501 };
 /** Made-up chat lines (channel, sender, female, text) standing in for server chat messages. */
 const DEMO_CHAT: [number, string, boolean, string][] = [
@@ -161,7 +163,20 @@ export class MapScene implements Scene {
     map.init();
     if (hud) {
       const [icon1] = encodeIcons(currentAppearance);
-      hud.updateWorldPlayerInfoUI({ ...DEMO_STATS, pet: DEMO_PET, headSprite: await resolveSprite(() => createHeadSpriteByIcon(icon1)) });
+      hud.updateWorldPlayerInfoUI({
+        level: me.getLevel(),
+        hp: me.get(ATTR_HP),
+        maxHp: me.get(ATTR_HP_MAX),
+        mp: me.get(ATTR_MP),
+        maxMp: me.get(ATTR_MP_MAX),
+        exp: me.get(ATTR_EXP),
+        maxExp: me.get(ATTR_EXP_MAX),
+        combatPoint: DEMO_COMBAT_POINT,
+        value118: 0,
+        level2: me.level2,
+        pet: DEMO_PET,
+        headSprite: await resolveSprite(() => createHeadSpriteByIcon(icon1)),
+      });
       const mini = hud.get(EVENT_ALL_INFO_SMALL_MAP);
       GameMap.initSmallMapWidth(mini, SCREEN_WIDTH, map);
       Object.assign(msgEnv, { width: uiScreen.width, height: uiScreen.height, font: uiFont });
