@@ -1,8 +1,10 @@
 // Turns parsed .ui data into gui widgets, applying each recorded call the way XmlParse.parseMethod
 // invokes the widget setters, and builds UIHandler.loadUIFromXML's library + frame.
+import { GameSprite } from '../sprite/GameSprite';
 import {
   GContainer,
   GGameBar,
+  GGameIcon,
   GImageNumer,
   GIcon,
   GLabel,
@@ -16,11 +18,28 @@ import {
 } from '../gui/GWidget';
 import type { UICall, UIFile, UINode } from './XmlParse';
 
+/** Stands in for GameWorld.myPlayer when a GGameIcon shows "my character" (sprite id 0). */
+export const uiContext: { myPlayerSprite: GameSprite | null } = { myPlayerSprite: null };
+
+/** Sprite ids that GGameIcons in a file will create (for preloading). */
+export function collectSpriteIds(f: UIFile): number[] {
+  const ids = new Set<number>();
+  const visit = (n: UINode) => {
+    for (const c of n.calls) if (c.code === 22 && (c.args[0] as number) > 0) ids.add(c.args[0] as number);
+    n.children.forEach(visit);
+  };
+  f.lib.forEach(visit);
+  visit(f.root);
+  return [...ids];
+}
+
 function create(node: UINode): GWidget {
   const vm = Int32Array.from(node.vm);
   switch (node.type) {
     case 1:
       return new GIcon(vm);
+    case 2:
+      return new GGameIcon(vm);
     case 3:
       return new GImageNumer(vm);
     case 7:
@@ -118,6 +137,18 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
     case 17:
       // Java's setFont does not rebuild the PixelString: FONT must precede DATA_LABEL to apply.
       if (w instanceof GPixelLabel) w.setFont(n(0));
+      break;
+    case 21:
+      if (w instanceof GGameIcon) w.setBackground(n(0), n(1), n(2));
+      break;
+    case 22:
+      if (w instanceof GGameIcon) {
+        // id 0 = a clone of the player's own sprite; > 0 = that sprite id.
+        w.setRotate(a[2] as unknown as boolean);
+        const id = n(0);
+        const sp = id === 0 ? GameSprite.cloneSprite(uiContext.myPlayerSprite) : id > 0 ? GameSprite.createSprite(id) : null;
+        w.setData(sp, a[1] as unknown as boolean);
+      }
       break;
     case 23:
       if (w instanceof GLabel) w.borderColor = n(0);

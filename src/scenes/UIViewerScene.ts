@@ -3,8 +3,11 @@ import { FONT_SMALL, FONT_MEDIUM, type Graphics } from '../midp/Graphics';
 import { KEY_DOWN, KEY_FIRE, KEY_LEFT, KEY_RIGHT, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_UP, type InputState } from '../midp/Input';
 import { getAssetFS } from '../game/common/Utilities';
 import { imageSetFiles } from '../game/main/GameView';
-import { uiFont, uiScreen, type GWidget } from '../game/gui/GWidget';
-import { buildAndShow } from '../game/ui/UIBuilder';
+import { uiClock, uiFont, uiScreen, type GWidget } from '../game/gui/GWidget';
+import { buildAndShow, collectSpriteIds, uiContext } from '../game/ui/UIBuilder';
+import { preloadSprite, resolveSprite } from '../game/sprite/GameSprite';
+import { createSpriteByIcon, encodeIcons } from '../game/sprite/SpriteIcon';
+import { currentAppearance } from './DressingRoomScene';
 import { collectImageSets } from '../game/ui/UIPreview';
 import { PIXEL_FONT_SIZES } from '../game/string/PixelFont';
 import { parseUIFile, uiMetrics, type UIFile } from '../game/ui/XmlParse';
@@ -52,6 +55,11 @@ export class UIViewerScene implements Scene {
       const f = parseUIFile(data);
       const sets = [...collectImageSets(f)];
       await fs.preload(sets.flatMap(imageSetFiles));
+      await Promise.all(collectSpriteIds(f).map(preloadSprite));
+      if (!uiContext.myPlayerSprite) {
+        const [i1, i2, i3] = encodeIcons(currentAppearance);
+        uiContext.myPlayerSprite = await resolveSprite(() => createSpriteByIcon(i1, i2, i3, false));
+      }
       if (token !== this.token) return;
       this.file = f;
       this.root = buildAndShow(f);
@@ -69,6 +77,7 @@ export class UIViewerScene implements Scene {
   }
 
   update(input: InputState): void {
+    uiClock.tick++;
     switch (input.key) {
       case KEY_LEFT:
       case KEY_UP:

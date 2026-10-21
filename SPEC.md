@@ -278,7 +278,7 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
 | Phần | File | Ghi chú |
 |------|------|---------|
 | Đọc `.ui` (`XmlParse`) | `game/ui/XmlParse.ts` | Đã đối chiếu từng mã thuộc tính với hằng `ATTR_SET_*`. Giữ cả lỗi gốc "đọc trước 1 int rồi mới ép kiểu". **165/165 file đọc khớp tới byte cuối, 3.955 widget.** |
-| Mô hình widget | `game/gui/GWidget.ts` | `GWidget`, `GContainer`, `GLinePanel`, `GTextArea`, `GWindow`, `GLabel`, `GPixelLabel`, `GIcon`, `GGameBar`, `GImageNumer` |
+| Mô hình widget | `game/gui/GWidget.ts` | `GWidget`, `GContainer`, `GLinePanel`, `GTextArea`, `GWindow`, `GLabel`, `GPixelLabel`, `GIcon`, `GGameIcon`, `GGameBar`, `GImageNumer` |
 | Layout | `GContainer` | V (113 lần dùng), Grid2 (18), Grid (11), H (6) và các kiểu align. `layoutV` lấy từ CFR (Vineflower lỗi). Không file nào dùng border layout nên chưa port. |
 | Dựng UI | `game/ui/UIBuilder.ts` | Áp các lệnh gọi như `parseMethod`, nhân bản `batchAdd`, `UIHandler.show()` (setAbs → layout → căn giữa) |
 | Vẽ khung | `game/main/GameView.ts` | `drawFrameBox`, `drawImageBox`, `drawBackGround`, `drawShadeBox`, `drawBoxCorner`, `drawImageNumber`… |
@@ -287,7 +287,8 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
 | Màn xem | `scenes/UIViewerScene.ts` | Duyệt cả 165 giao diện |
 
 ### 12.2 Chưa làm / khác bản gốc
-- `GGameIcon` (icon sprite, 108 lần), `GScrollBar`, `GSpinner`: hiện chưa vẽ.
+- `GGameIcon` đã vẽ được: sprite id > 0 tạo từ `.spr`, id 0 = bản sao nhân vật của người chơi (trong trình xem lấy từ phòng thay đồ, thay cho `GameWorld.myPlayer`).
+- `GScrollBar`, `GSpinner`: hiện chưa vẽ.
 - `GTextArea`: mới xuống dòng đơn giản; chưa xử lý mã định dạng `PowerString` (`/c...` màu, `/p`…).
 - Nhãn có icon đứng trước chữ (`iconValue`) và chữ chạy ngang khi quá dài (marquee) chưa port, nên vài nhãn còn bị cắt chữ.
 - Focus, phím, chạm, cuộn và hành vi riêng của từng màn (`UIHandler`, `UIAction`: 45k + 12k dòng) chưa port. Hiện chỉ **hiển thị**, chưa tương tác.

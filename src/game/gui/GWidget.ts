@@ -7,6 +7,7 @@ import type { Graphics } from '../../midp/Graphics';
 import { BOTTOM, HCENTER, RIGHT, TOP, VCENTER } from '../../midp/anchor';
 import { drawBorderString, drawBoxLines, drawFrameBox, drawImageNumber, fillArcRect, fillArcRect2, getImageSet } from '../main/GameView';
 import type { ImageSet } from '../image/ImageSet';
+import type { GameSprite } from '../sprite/GameSprite';
 import { PixelFont, PixelString } from '../string/PixelFont';
 
 const MAX = 2147483647;
@@ -32,6 +33,12 @@ export const uiFont = {
 
 /** GameCanvas.SCREEN_WIDTH / GameView.uiMaxWidth. */
 export const uiScreen = { width: 320, height: 480 };
+
+/**
+ * Logic tick counter. Java paints once per 50ms tick, and some widgets advance animations in
+ * paint(); the browser paints per display frame, so those widgets advance once per tick instead.
+ */
+export const uiClock = { tick: 0 };
 
 let keySeq = 0;
 
@@ -1016,6 +1023,69 @@ export class GImageNumer extends GWidget {
       g.setClip(x0, y0, w, h);
       drawImageNumber(g, set, start, this.numberString, x, y, this.space, a);
     }
+    g.setClip(0, 0, uiScreen.width, uiScreen.height);
+  }
+}
+
+/** Port of GGameIcon: a sprite (e.g. the player's character) standing on the bottom centre. */
+export class GGameIcon extends GWidget {
+  backgroundRes: ImageSet | null = null;
+  bgAnchor = 0;
+  bgFrameIndex = 0;
+  isAction = true;
+  isClear = true;
+  isRotate = false;
+  sprite: GameSprite | null = null;
+  private lastTick = -1;
+
+  constructor(vm: Int32Array) {
+    super(vm);
+    this.setType(2);
+  }
+
+  setBackground(setId: number, frame: number, anchor: number): void {
+    this.backgroundRes = getImageSet(setId);
+    this.bgFrameIndex = frame;
+    this.bgAnchor = anchor;
+  }
+
+  setRotate(r: boolean): void {
+    this.isRotate = r;
+    this.sprite?.setRotate(r);
+  }
+
+  setData(sprite: GameSprite | null, action: boolean): void {
+    this.sprite = sprite;
+    this.setRotate(this.isRotate);
+    this.isAction = action;
+  }
+
+  private drawSprite(g: Graphics): void {
+    const vm = this.vm;
+    if (this.backgroundRes != null) {
+      const a = this.bgAnchor;
+      const bx = vm[VM.XX] + (a & 1 ? this.getW() >> 1 : a & 8 ? this.getW() : 0);
+      const by = vm[VM.YY] + (a & 2 ? this.getH() >> 1 : a & 32 ? this.getH() : 0);
+      this.backgroundRes.drawFrame(g, this.bgFrameIndex, bx, by, 0, a);
+    }
+    if (this.isClear) g.setClip(0, 0, uiScreen.width, uiScreen.height);
+    const sp = this.sprite;
+    if (sp == null) return;
+    if (this.isAction && this.lastTick !== uiClock.tick) {
+      this.lastTick = uiClock.tick;
+      sp.action();
+    }
+    let foot = vm[VM.OFFSET_Y] + vm[VM.YY] + vm[VM.H];
+    if (sp.isHighTransport()) foot += 20;
+    sp.draw(g, vm[VM.OFFSET_X] + vm[VM.XX] + (vm[VM.W] >> 1), foot);
+  }
+
+  paint(g: Graphics): void {
+    g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
+    if (this.colorTable != null) {
+      drawFrameBox(g, this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H], this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
+    }
+    this.drawSprite(g);
     g.setClip(0, 0, uiScreen.width, uiScreen.height);
   }
 }
