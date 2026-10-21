@@ -5,7 +5,8 @@
 // until the .t pixel fonts are ported, and focus/scrolling/input are not ported yet.
 import type { Graphics } from '../../midp/Graphics';
 import { BOTTOM, HCENTER, RIGHT, TOP, VCENTER } from '../../midp/anchor';
-import { drawBorderString, drawFrameBox, getImageSet } from '../main/GameView';
+import { drawBorderString, drawBoxLines, drawFrameBox, getImageSet } from '../main/GameView';
+import type { ImageSet } from '../image/ImageSet';
 import { PixelFont, PixelString } from '../string/PixelFont';
 
 const MAX = 2147483647;
@@ -508,6 +509,20 @@ export class GContainer extends GWidget {
 export class GLinePanel extends GContainer {
   isLeftRightBgColorDisable = false;
   underLineColor = -1;
+  cornerRes: ImageSet | null = null;
+  frameIndex = 0;
+  bottomFrameIndex = 0;
+
+  /** DATA_LINEPANEL: colour table plus corner frames from an image set. */
+  setData(colors: number[], setId: number, top: number, bottom: number): void {
+    this.colorTable = colors;
+    const set = getImageSet(setId);
+    if (set != null) {
+      this.cornerRes = set;
+      this.frameIndex = top;
+      this.bottomFrameIndex = bottom;
+    }
+  }
 
   constructor(vm: Int32Array) {
     super(vm);
@@ -528,7 +543,7 @@ export class GLinePanel extends GContainer {
       }
       drawFrameBox(g, x, this.vm[VM.OFFSET_Y] + this.vm[VM.YY], w, this.vm[VM.H], table,
         focus ? this.focusShadeColorTable : this.shadeColorTable,
-        focus ? this.focusFragmentTable : this.fragmentTable, null, -1, -1);
+        focus ? this.focusFragmentTable : this.fragmentTable, this.cornerRes, this.frameIndex, this.bottomFrameIndex);
     }
     if (this.underLineColor !== -1) {
       g.setColor(this.underLineColor);
@@ -599,6 +614,38 @@ export class GLabel extends GWidget {
   selectBorderColor = -1;
   private setting = 0;
   strWidth = 0;
+  cornerRes: ImageSet | null = null;
+  cornFrameIndex = 0;
+  bottomCornFrameIndex = 0;
+  bgRes: ImageSet | null = null;
+  bgFrameIndex = 0;
+  bgFrameSelectIndex = 0;
+  bgAnchor = 0;
+  underLineColorTable: number[] | null = null;
+
+  /** BACK_LABEL: colour table plus corner frames. */
+  setBack(colors: number[], setId: number, top: number, bottom: number): void {
+    this.colorTable = colors;
+    const set = getImageSet(setId);
+    if (set != null) {
+      this.cornerRes = set;
+      this.cornFrameIndex = top;
+      this.bottomCornFrameIndex = bottom;
+    }
+  }
+
+  /** BACKGROUND_LABEL: an image frame drawn at an anchor point of the label (button faces). */
+  setBackground(setId: number, frame: number, selectFrame: number, anchor: number): void {
+    this.bgRes = getImageSet(setId);
+    this.bgFrameIndex = frame;
+    this.bgFrameSelectIndex = selectFrame;
+    this.bgAnchor = anchor;
+  }
+
+  setLineColorTable(t: number[], bottom: boolean): void {
+    this.underLineColorTable = t;
+    this.setSetting(64, bottom);
+  }
 
   constructor(vm: Int32Array) {
     super(vm);
@@ -656,7 +703,17 @@ export class GLabel extends GWidget {
       }
       drawFrameBox(g, x, this.vm[VM.YY], w, this.vm[VM.H], table,
         focus ? this.focusShadeColorTable : this.shadeColorTable,
-        focus ? this.focusFragmentTable : this.fragmentTable, null, -1, -1);
+        focus ? this.focusFragmentTable : this.fragmentTable, this.cornerRes, this.cornFrameIndex, this.bottomCornFrameIndex);
+      const inset = this.colorTable != null ? this.colorTable.length - 1 : 0;
+      const ly = this.isSetting(32) ? this.vm[VM.YY] : this.vm[VM.YY] + inset;
+      const lh = this.isSetting(32) ? this.vm[VM.H] : this.vm[VM.H] - inset * 2;
+      drawBoxLines(g, this.underLineColorTable, x + inset, ly, w - inset * 2 - 1, lh, this.isSetting(64), focus);
+    }
+    if (this.bgRes != null) {
+      const a = this.bgAnchor;
+      const bx = this.vm[VM.XX] + (a & HCENTER ? this.getW() >> 1 : a & RIGHT ? this.getW() : 0);
+      const by = this.vm[VM.YY] + (a & VCENTER ? this.getH() >> 1 : a & BOTTOM ? this.getH() : 0);
+      this.bgRes.drawFrame(g, focus ? this.bgFrameSelectIndex : this.bgFrameIndex, bx, by, 0, a);
     }
     this.paintContent(g);
     g.setClip(0, 0, uiScreen.width, uiScreen.height);

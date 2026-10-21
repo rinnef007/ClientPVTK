@@ -73,8 +73,21 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
     case 9:
       w.setSize(n(0), n(1));
       break;
+    case 11:
     case 12:
-      if (w instanceof GLabel) w.setData(a[0], n(1), n(2), n(3));
+      if (w instanceof GLinePanel) w.setData(a[0], n(1), n(2), n(3));
+      else if (w instanceof GLabel) w.setData(a[0], n(1), n(2), n(3));
+      break;
+    case 13:
+    case 14:
+      if (w instanceof GTextArea) w.setData(a[0], n(1), n(2), n(2));
+      else if (w instanceof GLabel) w.setBack(a[0], n(1), n(2), n(3));
+      break;
+    case 16:
+      if (w instanceof GLabel) w.setBackground(n(0), n(1), n(2), n(3));
+      break;
+    case 18:
+      if (w instanceof GLabel) w.setLineColorTable(a[0], a[1]);
       break;
     case 15:
       if (w instanceof GIcon) w.setIconData(n(0), n(1));
