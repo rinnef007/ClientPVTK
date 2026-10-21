@@ -1,8 +1,9 @@
 // The model part of com.hz.map.PlayerLayer.draw (jadx decompile): on each map row, the other
 // players (filtered by the "Người chơi" setting, at most 20, team mates always), then the NPCs,
-// then the player; drawModel puts names over other players (per the "Tên" setting), names and
-// quest signs over NPCs, and the stall / fight icons. Not ported: mercenaries and pets walking
-// beside their owner (getMerList / getPet on the map), NPC welcome bubbles, the hide-players NPCs
+// then the player; drawPlayerModel puts a player's pet behind or in front of it by y;
+// drawModel puts names over other players (per the "Tên" setting), names and quest signs over
+// NPCs, and the stall / fight icons. Not ported: mercenaries (getMerList), riding pets (tab 256),
+// NPC welcome bubbles, the hide-players NPCs
 // (NPC.isPlayerSHow is always true) and the default NPC image for sprite-less NPCs.
 import type { Graphics } from '../../midp/Graphics';
 import type { Model } from '../actor/Model';
@@ -101,6 +102,22 @@ export function drawModel(g: Graphics, ox: number, oy: number, m: Model, isMe: b
   drawModelIcon(g, m, x, y - h, h, sp.getRotate());
 }
 
+/** PlayerLayer.drawPlayerModel: the pet first when it stands higher on screen than its owner. */
+function drawPlayerModel(g: Graphics, ox: number, oy: number, m: Model, isMe: boolean, me: Player | null): void {
+  const pet = m.getPet();
+  if (pet != null && !m.isTabStatus(256)) {
+    if (pet.py > m.py) {
+      drawModel(g, ox, oy, m, isMe, me);
+      drawModel(g, ox, oy, pet, isMe, me);
+    } else {
+      drawModel(g, ox, oy, pet, isMe, me);
+      drawModel(g, ox, oy, m, isMe, me);
+    }
+    return;
+  }
+  drawModel(g, ox, oy, m, isMe, me);
+}
+
 /** One map row of PlayerLayer.draw; `shown` counts the other players drawn so far this frame. */
 export function drawModelRow(
   g: Graphics, row: number, ox: number, oy: number, startGx: number, endGx: number,
@@ -111,12 +128,12 @@ export function drawModelRow(
     if (gx < startGx || gx > endGx || m.getGy() !== row) continue;
     if (isSameTeam(m, me) || (shown.n < MAX_OTHER_PLAYERS && isShowOtherPlayer(m, me))) {
       shown.n++;
-      drawModel(g, ox, oy, m, false, me);
+      drawPlayerModel(g, ox, oy, m, false, me);
     }
   }
   for (const n of npcs) {
     const gx = n.getGx();
     if (gx >= startGx && gx <= endGx && n.getGy() === row) drawModel(g, ox, oy, n, false, me);
   }
-  if (me != null && me.getGy() === row) drawModel(g, ox, oy, me, true, me);
+  if (me != null && me.getGy() === row) drawPlayerModel(g, ox, oy, me, true, me);
 }

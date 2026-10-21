@@ -96,6 +96,13 @@ export class Player extends Model {
   getPet(): Player | null {
     return this.pet;
   }
+
+  /** Model.setPet: the pet follows this player. (Riding pets, tab 256, are not ported.) */
+  setPet(pet: Player | null): void {
+    if (this.pet != null && this.pet.follower === this) this.pet.follower = null;
+    this.pet = pet;
+    if (pet != null) pet.follower = this;
+  }
   /** Attribute values by id (sent by the server in the real game). */
   readonly values = new Map<number, number>();
 

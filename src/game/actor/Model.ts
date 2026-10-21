@@ -1,5 +1,6 @@
 // Port of the movement/animation core of com.hz.actor.Model (Vineflower decompile of classes2.dex).
-// Not ported: team/pet/mercenary following, stats, money, VIP, serialisation.
+// Pets follow their owner (Model.setPet / checkFollowMove / initFollowPos). Not ported: team and
+// mercenary following, riding pets (tab 256 inner sprite), stats, money, VIP, serialisation.
 import type { Graphics } from '../../midp/Graphics';
 import type { Control } from '../main/Control';
 import { TILE } from '../map/TileLayer';
@@ -158,14 +159,69 @@ export class Model implements MapModel {
     this.excuteControlList(this.controlList);
   }
 
-  /** Model.logicPlayer also ticks the pet and mercenaries, which are not ported. */
+  /** Model.logicPlayer: the model, then its pet (mercenaries are not ported). */
   logicPlayer(): void {
     this.logic();
+    this.getPet()?.logic();
+  }
+
+  /**
+   * GameWorld.getSpeed and Control.createPixelMove, installed by those modules (importing them here
+   * would make an import cycle through NPC, which extends Model).
+   */
+  static speedOf: (m: Model) => number = () => 6;
+  static createPixelMove: (followerId: number, dx: number, dy: number, type: number) => Control | null = () => null;
+
+  /** The model this one follows (set on a pet by its owner's setPet). */
+  follower: Model | null = null;
+
+  /** Model.getPet (Player keeps the field). */
+  getPet(): Model | null {
+    return null;
+  }
+
+  isFollower(): boolean {
+    return this.follower != null;
+  }
+
+  /**
+   * Model.checkFollowMove: more than 48 px (x + y) from the owner, step towards it at the move speed
+   * on each axis more than 24 px away. (Java's "longer axis" fallback cannot trigger: both axes
+   * within 24 px means at most 48 px in total.)
+   */
+  private checkFollowMove(): boolean {
+    const f = this.follower;
+    if (f == null) return false;
+    const dx = f.getPx() - this.getPx();
+    const dy = f.getPy() - this.getPy();
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    if (ax + ay <= 48) return false;
+    const speed = Model.speedOf(this);
+    let mx = ax > 24 ? (dx > 0 ? speed : -speed) : 0;
+    let my = ay > 24 ? (dy > 0 ? speed : -speed) : 0;
+    if (mx === 0 && my === 0) {
+      if (ay > ax) my = dy > 0 ? speed : -speed;
+      else mx = dx > 0 ? speed : -speed;
+    }
+    const c = Model.createPixelMove(f.getId(), mx, my, this.getType());
+    if (c == null) return false;
+    this.controlList.push(c);
+    return true;
+  }
+
+  /** Model.initFollowPos: the pet starts on its owner (after placing or a map jump). */
+  initFollowPos(): void {
+    const pet = this.getPet();
+    if (pet != null) {
+      pet.px = this.px;
+      pet.py = this.py;
+    }
   }
 
   /** Runs the head control; when idle after a move, returns to the standing animation. */
   excuteControlList(list: Control[]): void {
-    if (list.length === 0) {
+    if (list.length === 0 && !this.checkFollowMove()) {
       if (this.isTabStatus(TAB_MOVE_END)) {
         this.setAnimationByDir(false);
         this.setTabStatus(false, TAB_MOVE_END);

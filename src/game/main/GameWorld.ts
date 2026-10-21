@@ -1,6 +1,6 @@
 // The parts of com.hz.main.GameWorld that world movement uses (Vineflower decompile of
 // classes2.dex): the model registry, NPC lookups, move speed and BFS grid path search.
-import type { Model } from '../actor/Model';
+import { Model } from '../actor/Model';
 import type { NPC } from '../actor/NPC';
 import type { Player } from '../actor/Player';
 import { GameMap } from '../map/GameMap';
@@ -83,6 +83,8 @@ export let doJumpMap: (mapId: number, gx: number, gy: number) => void = () => {}
 export function getSpeed(m: Model): number {
   return m === myPlayer ? myMoveSpeed : 6;
 }
+
+Model.speedOf = getSpeed;
 
 export function setMyMoveSpeed(v: number): void {
   myMoveSpeed = v;

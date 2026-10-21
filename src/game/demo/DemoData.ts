@@ -185,6 +185,6 @@ export function fillDemoPlayer(p: Player): void {
     DEMO_COMBAT_VALUES.forEach(([k, v]) => pet.set(k, Math.max(1, (v * 0.6) | 0)));
     Object.assign(pet, { cp: 6, grow: 72, compre: 55, growLevel: 7, petAge: 1200, petmaxage: 2000, petHeadIcon: 501 });
     pet.skillList = makeDemoPetSkills();
-    p.pet = pet;
+    p.setPet(pet);
   }
 }

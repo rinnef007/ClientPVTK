@@ -1,6 +1,6 @@
 // Port of the world-movement part of com.hz.main.Control (Vineflower decompile of classes2.dex).
 // Battle controls (skills, effects, escape) and their serialisation are not ported yet.
-import type { Model } from '../actor/Model';
+import { Model } from '../actor/Model';
 import * as GameWorld from './GameWorld';
 import { getDirByMovePixels } from './WorldPanel';
 
@@ -179,10 +179,11 @@ export class Control {
     return true;
   }
 
-  /** Type 1 = NPC, 3 = player model; pets (4) and mercenaries (5) are not ported. */
+  /** Type 1 = NPC, 3 = player model, 4 = that player's pet; mercenaries (5) are not ported. */
   private getMoveModel(id: number, _subId: number, modelType: number): Model | null {
     if (modelType === 1) return GameWorld.getNpcByID(id);
     if (modelType === 3) return GameWorld.getModel(id);
+    if (modelType === 4) return GameWorld.getModel(id)?.getPet() ?? null;
     return null;
   }
 
@@ -202,3 +203,5 @@ export class Control {
     this.statusFlag = (this.statusFlag & ~bit) | (on ? bit : 0);
   }
 }
+
+Model.createPixelMove = (id, dx, dy, type) => Control.createPixelMove(id, dx, dy, type);

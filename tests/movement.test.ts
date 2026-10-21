@@ -170,13 +170,16 @@ describe('NPC wandering', () => {
     let now = realNow();
     Date.now = () => now;
     try {
+      // A random walk can end back on its start cell, so check that it moved at some point.
+      let moved = false;
       for (let i = 0; i < 3000; i++) {
         now += 50;
         tick();
         expect(Math.abs(n.getGx() - 8)).toBeLessThanOrEqual(3);
         expect(Math.abs(n.getGy() - 6)).toBeLessThanOrEqual(2);
+        if (n.getPx() !== 8 * 24 || n.getPy() !== 6 * 24) moved = true;
       }
-      expect(n.getPx() !== 8 * 24 || n.getPy() !== 6 * 24).toBe(true);
+      expect(moved).toBe(true);
     } finally {
       Date.now = realNow;
     }

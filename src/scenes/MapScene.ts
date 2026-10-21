@@ -128,6 +128,8 @@ export class MapScene implements Scene {
     me.setPlayerSprite(mySprite);
     me.setAnimationByDir(false);
     fillDemoPlayer(me);
+    me.initFollowPos();
+    me.getPet()?.setAnimationByDir(false);
 
     const others: Model[] = [];
     for (let i = 0; i < OTHER_PLAYERS.length; i++) {
