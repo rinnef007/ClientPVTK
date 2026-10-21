@@ -5,7 +5,7 @@
 // until the .t pixel fonts are ported, and focus/scrolling/input are not ported yet.
 import type { Graphics } from '../../midp/Graphics';
 import { BOTTOM, HCENTER, RIGHT, TOP, VCENTER } from '../../midp/anchor';
-import { drawBorderString, drawBoxLines, drawFrameBox, getImageSet } from '../main/GameView';
+import { drawBorderString, drawBoxLines, drawFrameBox, drawImageNumber, fillArcRect, fillArcRect2, getImageSet } from '../main/GameView';
 import type { ImageSet } from '../image/ImageSet';
 import { PixelFont, PixelString } from '../string/PixelFont';
 
@@ -846,12 +846,176 @@ export class GIcon extends GPixelLabel {
   }
 }
 
-/** Widgets whose behaviour is not ported yet (game icons, numbers, bars, scroll bars, spinners). */
-export class GPlaceholder extends GWidget {
+/** Widgets whose behaviour is not ported yet (game icons, scroll bars, spinners). */
+export class GPlaceholder extends GWidget {}
+
+/** Port of GGameBar: HP/MP/EXP style bars (default), vertical bars and star rows. */
+export class GGameBar extends GWidget {
+  barType = 0;
+  barValue1 = 0;
+  barValue2 = 0;
+  bgColor1 = -1;
+  bgColor2 = -1;
+  bgColor3 = -1;
+  fgColor1 = -1;
+  fgColor2 = -1;
+  fgColor3 = -1;
+  maxValue = 0;
+  curValue = 0;
+
+  constructor(vm: Int32Array) {
+    super(vm);
+    this.setType(7);
+  }
+
+  setBarType(t: number, v1: number, v2: number): void {
+    this.barType = t;
+    this.barValue1 = v1;
+    this.barValue2 = v2;
+  }
+  setBgColor(a: number, b: number, c: number): void {
+    [this.bgColor1, this.bgColor2, this.bgColor3] = [a, b, c];
+  }
+  setFgColor(a: number, b: number, c: number): void {
+    [this.fgColor1, this.fgColor2, this.fgColor3] = [a, b, c];
+  }
+  setValue(max: number, cur: number): void {
+    this.maxValue = max;
+    this.curValue = cur > max ? max : cur;
+  }
+
+  private getDrawBarLength(len: number): number {
+    if (this.maxValue <= 0) return 0;
+    const v = ((len * this.curValue) / this.maxValue) | 0;
+    return v <= 0 && this.curValue > 0 ? 1 : v;
+  }
+
   paint(g: Graphics): void {
-    if (this.getType() === 7) {
-      g.setColor(0x804060a0);
-      g.fillRect(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], Math.max(2, this.vm[VM.H]));
+    g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
+    const x = this.vm[VM.XX] + this.vm[VM.OFFSET_X];
+    const y = this.vm[VM.YY] + this.vm[VM.OFFSET_Y];
+    const w = this.vm[VM.W];
+    const h = this.vm[VM.H];
+    if (this.barType === 0) this.drawBarDefault(g, x, y, w, h);
+    else if (this.barType === 1) this.drawVDefault(g, x, y, w, h);
+    else if (this.barType === 2) this.drawHStarDefault(g, x, y, w, h);
+    g.setClip(0, 0, uiScreen.width, uiScreen.height);
+  }
+
+  private drawBarDefault(g: Graphics, x: number, y: number, w: number, h: number): void {
+    if (this.bgColor1 >= 0) {
+      g.setColor(this.bgColor1);
+      fillArcRect(g, x, y, w, h);
     }
+    if (this.bgColor2 >= 0) {
+      g.setColor(this.bgColor2);
+      fillArcRect2(g, x + 1, y + 1, w - 2, h - 2);
+    }
+    if (this.bgColor3 >= 0) {
+      g.setColor(this.bgColor3);
+      g.fillRect(x + 2, y + 2, w - 4, h - 4);
+    }
+    const len = this.getDrawBarLength(w - 4);
+    const bx = x + 2;
+    const by = y + 2;
+    const bh = h - 4;
+    if (this.fgColor2 >= 0) {
+      g.setColor(this.fgColor2);
+      g.fillRect(bx, by, len, bh);
+    }
+    if (this.fgColor1 >= 0) {
+      g.setColor(this.fgColor1);
+      g.fillRect(bx, by, len, 1);
+    }
+    if (this.fgColor3 >= 0) {
+      g.setColor(this.fgColor3);
+      g.fillRect(bx, by + bh - 2, len, 2);
+    }
+    g.setClip(bx, by, len, bh);
+    drawFrameBox(g, bx, by, len, bh, this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
+  }
+
+  private drawVDefault(g: Graphics, x: number, y: number, w: number, h: number): void {
+    if (this.curValue <= 0) return;
+    const len = this.getDrawBarLength(h);
+    g.setClip(x, y + h - len, w, len);
+    drawFrameBox(g, x, y, w, h, this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
+  }
+
+  /** curValue/10 stars (half star for odd counts) from frame barValue2 of set barValue1. */
+  private drawHStarDefault(g: Graphics, x: number, y: number, w: number, h: number): void {
+    if (this.curValue <= 0) return;
+    const set = getImageSet(this.barValue1);
+    if (set == null) return;
+    const f = this.barValue2;
+    const fw = set.getFrameWidth(f);
+    const fh = set.getFrameHeight(f);
+    if (fw <= 0) return;
+    let n = (this.curValue / 10) | 0;
+    if (n <= 0) n = 1;
+    let sx = x + (((w - (((n + 1) / 2) | 0) * fw) / 2) | 0);
+    const sy = y + (((h - fh) / 2) | 0);
+    for (; n > 0; n -= 2) {
+      if (n === 1) g.setClip(sx, sy, fw >> 1, fh);
+      set.drawTopLeftFrame(g, f, sx, sy);
+      sx += fw;
+    }
+  }
+}
+
+/** Port of GImageNumer: numbers drawn with digit frames from an image set. */
+export class GImageNumer extends GWidget {
+  anchor = 0;
+  iNumber = 0;
+  isShowSign = true;
+  numberString: string | null = null;
+  numerResName: ImageSet | null = null;
+  plusStartIndex = 0;
+  subStartIndex = 0;
+  space = 0;
+
+  constructor(vm: Int32Array) {
+    super(vm);
+    this.setType(3);
+  }
+
+  setData(setId: number, space: number, anchor: number): void {
+    const set = getImageSet(setId);
+    if (set == null) return;
+    this.numerResName = set;
+    this.plusStartIndex = 0;
+    this.subStartIndex = 0;
+    this.space = space;
+    this.anchor = anchor;
+    this.isShowSign = true;
+  }
+
+  setNumerString(s: string): void {
+    this.numberString = s;
+  }
+
+  paint(g: Graphics): void {
+    const set = this.numerResName;
+    if (set != null && this.numberString != null) {
+      const start = this.iNumber >= 0 ? this.plusStartIndex : this.subStartIndex;
+      const vm = this.vm;
+      const x0 = vm[VM.OFFSET_X] + vm[VM.XX] + vm[VM.BORDER_LEFT];
+      const y0 = vm[VM.OFFSET_Y] + vm[VM.YY] + vm[VM.BORDER_TOP];
+      const w = vm[VM.W] - vm[VM.BORDER_LEFT] - vm[VM.BORDER_RIGHT];
+      const h = vm[VM.H] - vm[VM.BORDER_TOP] - vm[VM.BORDER_BOTTOM];
+      let a = this.anchor;
+      const x = a & 1 ? x0 + ((w / 2) | 0) : a & 8 ? x0 + w : x0;
+      const nh = set.getFrameHeight(start);
+      let y = y0;
+      if (a & 2) {
+        y = y0 + (((h - nh) / 2) | 0);
+        a = (a & ~2) | 16;
+      } else if (a & 32) {
+        y = y0 + (h - (((h - nh) / 2) | 0));
+      }
+      g.setClip(x0, y0, w, h);
+      drawImageNumber(g, set, start, this.numberString, x, y, this.space, a);
+    }
+    g.setClip(0, 0, uiScreen.width, uiScreen.height);
   }
 }

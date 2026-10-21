@@ -258,3 +258,41 @@ export function drawImageBox(
   }
   drawBoxCorner(g, x, y, w, h, set, topCorner, bottomCorner);
 }
+
+/** Rectangle with 2px-rounded corners. */
+export function fillArcRect(g: Graphics, x: number, y: number, w: number, h: number): void {
+  if (h > 4) {
+    g.fillRect(x + 2, y, w - 4, h);
+    g.fillRect(x + 1, y + 1, w - 2, h - 2);
+    g.fillRect(x, y + 2, w, h - 4);
+  } else g.fillRect(x, y, w, h);
+}
+
+/** Rectangle with 1px-rounded corners. */
+export function fillArcRect2(g: Graphics, x: number, y: number, w: number, h: number): void {
+  if (h > 2) {
+    g.fillRect(x, y + 1, w, h - 2);
+    g.fillRect(x + 1, y, w - 2, h);
+  } else g.fillRect(x, y, w, h);
+}
+
+/**
+ * Digits from an image set: frames start+0..9, then '/', '+', '-' at start+10..12 (other
+ * characters use their char code, as in Java). Returns the drawn width.
+ */
+export function drawImageNumber(g: Graphics, set: ImageSet | null, start: number, s: string, x: number, y: number, space: number, anchor: number): number {
+  if (set == null) return 0;
+  const fw = set.getFrameWidth(start);
+  const fh = set.getFrameHeight(start);
+  const total = fw * s.length;
+  const left = anchor & 8 ? x - total : anchor & 1 ? x - (total >> 1) : x;
+  const top = anchor & 32 ? y - fh : anchor & 2 ? y - (fh >> 1) : y;
+  let cx = left;
+  for (const ch of s) {
+    const c = ch.charCodeAt(0);
+    const k = c >= 48 && c <= 57 ? c - 48 : ch === '/' ? 10 : ch === '+' ? 11 : ch === '-' ? 12 : c;
+    set.drawTopLeftFrame(g, k + start, cx, top);
+    cx += fw + space;
+  }
+  return cx - left;
+}

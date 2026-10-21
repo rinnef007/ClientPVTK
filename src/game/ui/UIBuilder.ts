@@ -2,6 +2,8 @@
 // invokes the widget setters, and builds UIHandler.loadUIFromXML's library + frame.
 import {
   GContainer,
+  GGameBar,
+  GImageNumer,
   GIcon,
   GLabel,
   GLinePanel,
@@ -19,6 +21,10 @@ function create(node: UINode): GWidget {
   switch (node.type) {
     case 1:
       return new GIcon(vm);
+    case 3:
+      return new GImageNumer(vm);
+    case 7:
+      return new GGameBar(vm);
     case 4:
       return new GLabel(vm);
     case 5:
@@ -115,6 +121,24 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
       break;
     case 23:
       if (w instanceof GLabel) w.borderColor = n(0);
+      break;
+    case 24:
+      if (w instanceof GGameBar) w.setBgColor(n(0), n(1), n(2));
+      break;
+    case 25:
+      if (w instanceof GGameBar) w.setFgColor(n(0), n(1), n(2));
+      break;
+    case 26:
+      if (w instanceof GGameBar) w.setValue(n(0), n(1));
+      break;
+    case 40:
+      if (w instanceof GImageNumer) w.setData(n(0), n(1), n(2));
+      break;
+    case 41:
+      if (w instanceof GImageNumer) w.setNumerString(a[0]);
+      break;
+    case 46:
+      if (w instanceof GGameBar) w.setBarType(n(0), n(1), n(2));
       break;
     case 38:
       if (w instanceof GPixelLabel) w.setPixelColorTable(a[0]);
