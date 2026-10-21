@@ -17,6 +17,7 @@ import { imageSetFiles } from '../game/main/GameView';
 import { isMotion, uiClock, uiFont, uiScreen } from '../game/gui/GWidget';
 import { TYPE_ALERT, UIHandler, preloadUI } from '../game/ui/UIHandler';
 import '../game/ui/screens';
+import { setOnQuitGame } from '../game/ui/UIAction';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles } from '../game/ui/WorldHud';
 import * as WorldMessage from '../game/main/WorldMessage';
 import { fillDemoPlayer } from '../game/demo/DemoData';
@@ -174,6 +175,7 @@ export class MapScene implements Scene {
     const quest = npcs[QUEST_NPC];
     Object.assign(GameWorld.missionRadar, { mapId: map.getMapID(), gx: quest.sourceGx, gy: quest.sourceGy });
     GameWorld.setMotion(isMotion);
+    setOnQuitGame(() => this.leave());
     this.hud = hud;
     this.others = others;
     this.map = map;

@@ -5,3 +5,4 @@ import './itemList';
 import './playerInfo';
 import './nearPlayer';
 import './chat';
+import './systemSet';

@@ -106,7 +106,14 @@ const MENU: Record<number, [string, number?] | (() => void)> = {
   11202: ['systemSet'], // settings ("H.Thống")
   941: ['playerEvent'], // events
   11219: () => alertMessage('Bạn chưa kết bạn'), // GameWorld.isShowRelation is false without server data
+  11231: () => onQuitGame(), // "Rời game": GameWorld.doLogOutMsg(3); offline it leaves the map
 };
+
+/** What "Rời game" does offline (the scene sets it; Java logs out from the server). */
+export let onQuitGame: () => void = () => {};
+export function setOnQuitGame(fn: () => void): void {
+  onQuitGame = fn;
+}
 
 export function doMenuButton(ev: number): void {
   const m = MENU[ev];
