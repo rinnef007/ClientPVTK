@@ -662,19 +662,31 @@ export class GLabel extends GWidget {
     g.setClip(0, 0, uiScreen.width, uiScreen.height);
   }
 
-  /** Text placed by anchor inside the box, vertically centred like GLabel.paint. */
+  /**
+   * GLabel.paint text placement: inside the border insets (+ offset), horizontal anchor from
+   * the label anchor, VCENTER converted to TOP with manual centring, clipped to the text box.
+   * (Marquee scrolling of over-long text and icon prefixes are not ported yet.)
+   */
   protected paintContent(g: Graphics): void {
-    if (!this.label) return;
-    const a = this.anchor;
-    const x = this.vm[VM.XX];
-    const y = this.vm[VM.YY];
-    const w = this.vm[VM.W];
-    const h = this.vm[VM.H];
-    const tx = a & HCENTER ? x + (w >> 1) : a & RIGHT ? x + w : x;
-    const fh = this.getBaseFontHeight();
-    const ty = a & VCENTER ? y + ((h - fh) >> 1) : a & BOTTOM ? y + h - ((h - fh) >> 1) - fh : y;
-    const anchor = (a & (HCENTER | RIGHT)) | TOP | (a & HCENTER || a & RIGHT ? 0 : 4);
-    this.paintLabel(g, tx, ty, anchor);
+    if (this.label == null) return;
+    const vm = this.vm;
+    const x = vm[VM.OFFSET_X] + vm[VM.XX] + vm[VM.BORDER_LEFT];
+    const y = vm[VM.OFFSET_Y] + vm[VM.YY] + vm[VM.BORDER_TOP];
+    const w = vm[VM.W] - vm[VM.BORDER_LEFT] - vm[VM.BORDER_RIGHT];
+    const h = vm[VM.H] - vm[VM.BORDER_TOP] - vm[VM.BORDER_BOTTOM];
+    let anchor = this.anchor;
+    const tx = anchor & HCENTER ? x + ((w / 2) | 0) : anchor & RIGHT ? x + w : x;
+    let ty: number;
+    if (anchor & VCENTER) {
+      ty = (((h - this.getBaseFontHeight()) / 2) | 0) + y;
+      anchor = (anchor & ~VCENTER) | TOP;
+    } else if (anchor & BOTTOM) {
+      ty = h - (((h - this.getBaseFontHeight()) / 2) | 0) + y;
+    } else {
+      ty = y;
+    }
+    g.clipRect(x, y, w, h);
+    this.paintLabel(g, tx, ty, anchor === 0 ? TOP | 4 : anchor);
   }
 
   /** GLabel.paintLabel: system-font text with an optional 4-way or drop-shadow border. */

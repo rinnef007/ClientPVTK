@@ -263,7 +263,7 @@ export class Graphics {
   // --- internals ---
 
   private applyFont(): void {
-    this.ctx.font = `${this.fontSize}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`;
+    this.ctx.font = `${this.fontSize}px Roboto, Arial, "Liberation Sans", Helvetica, sans-serif`;
   }
 
   // Canvas clips only shrink, so reset to a saved base state and clip once.

@@ -31,7 +31,7 @@ export class UIViewerScene implements Scene {
     uiMetrics.screenHeight = uiScreen.height = SCREEN_HEIGHT;
     // Labels size themselves from text metrics while the tree is built (GLabel.resetSize).
     const measure = document.createElement('canvas').getContext('2d')!;
-    measure.font = `${FONT_MEDIUM}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`;
+    measure.font = `${FONT_MEDIUM}px Roboto, Arial, "Liberation Sans", Helvetica, sans-serif`;
     uiFont.height = FONT_MEDIUM + 2;
     uiMetrics.fontHeight = uiFont.height;
     uiFont.stringWidth = (t) => Math.ceil(measure.measureText(t).width);
