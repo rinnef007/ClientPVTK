@@ -2,3 +2,4 @@
 import '../UIAction';
 import './equip';
 import './itemList';
+import './playerInfo';

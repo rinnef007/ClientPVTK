@@ -54,4 +54,11 @@ export const DEMO_PLAYER_VALUES: [number, number][] = [
 export function fillDemoPlayer(p: Player): void {
   p.bag = makeDemoBag();
   for (const [k, v] of DEMO_PLAYER_VALUES) p.set(k, v);
+  // Base attributes, totals with equipment bonus, and points left to assign.
+  [p.str, p.con, p.agi, p.ilt, p.wis] = [40, 32, 25, 18, 20];
+  [[6, 52], [7, 40], [8, 25], [9, 18], [10, 26], [4, 5]].forEach(([k, v]) => p.set(k, v));
+  p.job = 3;
+  p.race = 0;
+  p.countryName = 'Quốc gia demo';
+  p.countryRank = 'Dân thường';
 }

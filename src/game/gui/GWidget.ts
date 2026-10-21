@@ -1347,6 +1347,75 @@ export class GWindow extends GLinePanel {
     w?.setFocus(true);
   }
 
+  // --- LR paging: a row of tab labels showing a window of a longer list (allSize entries) ---
+  allSize = 0;
+  isLRMove = false;
+
+  setLRMove(): void {
+    this.firstInViewIndex = 0;
+    this.lastInViewIndex = this.children.length - 1;
+    this.isLRMove = true;
+  }
+
+  isLRCanLeft(): boolean {
+    return this.firstInViewIndex > 0;
+  }
+
+  isLRCanRight(): boolean {
+    return this.lastInViewIndex < this.allSize - 1;
+  }
+
+  /**
+   * Fills the tab labels with names[first…]; each label keeps its id as obj. With `focusId` the
+   * labels page right until that id is shown and focused.
+   */
+  setLRContent(names: string[], ids: (number | null)[], focusId = -1): void {
+    this.allSize = names.length;
+    let found = false;
+    const wanted = focusId !== -1 && ids.includes(focusId);
+    if (wanted) {
+      this.firstInViewIndex = 0;
+      this.lastInViewIndex = this.children.length - 1;
+    }
+    for (;;) {
+      this.children.forEach((c, i) => {
+        const k = this.firstInViewIndex + i;
+        const text = k >= 0 && k < names.length ? names[k] : null;
+        if (c instanceof GLabel) c.setText(text ?? '');
+        if (k >= 0 && k < ids.length) {
+          c.setObj(ids[k]);
+          if (ids[k] != null && ids[k] === focusId) {
+            this.setFocus(c);
+            found = true;
+          }
+        }
+        c.setShow(text != null);
+      });
+      if (!wanted || found || !this.isLRCanRight()) return;
+      this.doLRRight(true);
+    }
+  }
+
+  doLRLeft(page: boolean): void {
+    if (!page && this.focusIndex > 0) {
+      this.keyPrev(this.children, this.focusIndex);
+    } else if (this.isLRCanLeft()) {
+      this.keyPrev(this.children, 0);
+      this.firstInViewIndex = Math.max(0, this.firstInViewIndex - this.children.length);
+      this.lastInViewIndex = Math.min(this.firstInViewIndex + this.children.length - 1, this.allSize - 1);
+    }
+  }
+
+  doLRRight(page: boolean): void {
+    if (!page && this.focusIndex < this.children.length - 1 && this.focusIndex < this.allSize - 1) {
+      this.keyNext(this.children, this.focusIndex);
+    } else if (this.isLRCanRight()) {
+      this.keyNext(this.children, this.children.length - 1);
+      this.lastInViewIndex = Math.min(this.lastInViewIndex + this.children.length, this.allSize - 1);
+      this.firstInViewIndex = Math.max(0, this.lastInViewIndex - this.children.length + 1);
+    }
+  }
+
   /** Hot keys (1 3 7 9 * 0 #) focus the child whose hotKeyTable entry matches the key's slot. */
   hotKeyPress(key: number): void {
     if (this.hotKeyTable == null) return;
