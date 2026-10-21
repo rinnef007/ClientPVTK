@@ -132,7 +132,6 @@ export class DressingRoomScene implements Scene {
     const s = this.sprite;
     if (!s) return;
     s.setCurAnimation(this.walking ? ANIMATION_MOVE : ANIMATION_STAND);
-    s.cloakSprite?.setCurAnimation(this.walking ? ANIMATION_MOVE : ANIMATION_STAND);
     s.setRotate(this.mirror);
   }
 

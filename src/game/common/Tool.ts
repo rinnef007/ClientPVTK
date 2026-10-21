@@ -54,3 +54,34 @@ export function toShort(v: number): number {
 export function toByte(v: number): number {
   return (v << 24) >> 24;
 }
+
+/** Integer square root, digit by digit (Tool.sqrt). */
+export function sqrt(i: number): number {
+  if (i < 100) {
+    let r = 9;
+    while (i < r * r) r--;
+    return r;
+  }
+  const hi = sqrt((i / 100) | 0);
+  const rem = i - hi * hi * 100;
+  const base = hi * 20;
+  let d = (rem / base) | 0;
+  while ((base + d) * d > rem) d--;
+  return hi * 10 + d;
+}
+
+/** Euclidean distance with the integer sqrt (used as A* cost). */
+export function getCost(x1: number, y1: number, x2: number, y2: number): number {
+  const dx = Math.abs(x1 - x2);
+  const dy = Math.abs(y1 - y2);
+  return sqrt(dx * dx + dy * dy);
+}
+
+export function isColliding(x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number): boolean {
+  return w1 + x1 > x2 && x1 < x2 + w2 && h1 + y1 > y2 && y1 < y2 + h2;
+}
+
+/** Tool.rand(min, max): uniform in [min, max]. */
+export function rand(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}

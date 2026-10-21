@@ -192,7 +192,7 @@ mỗi giai đoạn có thể cần nhiều phiên làm việc.
 5. **Đoạn decompile lỗi** (`createFragmentFile`, `drawGameImage` 5 tham số, `PixelLayer.drawColObject/drawRowObject`): viết lại theo ý đồ đọc được từ code, có chú thích tại chỗ.
 6. `fillCol/fillRow` xoá cột/hàng về đen trước khi vẽ lại. Bản gốc dựa vào tile nền phủ kín; với tile nền đục thì kết quả như nhau.
 7. **Bản đồ thử** (`map/TestMap.ts`): do bố cục map đến từ server, file này *tự sinh* byte theo đúng định dạng `GameMap.fromBytes`, dùng ảnh trong `map/1.pd`.
-8. **Nhân vật đi lại** (`MapScene.WalkingPlayer`): bản đơn giản (4 px/tick, chặn theo ô va chạm). Lớp `Player` gốc (đi theo đường tìm được và xác nhận với server) chưa port.
+8. ~~Nhân vật đi lại bản đơn giản~~: đã thay bằng code di chuyển gốc (xem §11).
 
 ### 9.3 Đã kiểm chứng
 - 2.966/2.966 file `.spr` đọc khớp từng byte (script Python độc lập).
@@ -238,3 +238,36 @@ mỗi giai đoạn có thể cần nhiều phiên làm việc.
   giá trị công thức sinh ra, và APK không có `sprite_117`.
 - Chạy trên Chromium: tóc, áo, mũ, vũ khí, áo choàng, nhân vật nữ, thú cưỡi 701/703/706, và cưỡi thú kèm
   vũ khí (sprite 2513) đều hiển thị. Nhân vật trên bản đồ thử mặc đúng bộ đồ đã chọn.
+
+## 11. Di chuyển (Model / Control / WorldPanel / tìm đường)
+
+### 11.1 Đã port (Vineflower decompile của `classes2.dex`)
+| Java | TypeScript | Nội dung |
+|------|------------|----------|
+| `actor/Model` (phần di chuyển) | `game/actor/Model.ts` | Toạ độ pixel, hướng, hàng đợi `Control`, `move`, `setAnimationByDir`, `setSpriteRotateByDir`, `getNextMovePos` |
+| `actor/Player`, `actor/NPC` (phần đi lang thang) | `game/actor/Player.ts`, `NPC.ts` | NPC cứ mỗi 2–5 giây đi 1 ô (2 px/tick) theo 8 hướng, trong phạm vi quanh vị trí gốc |
+| `main/Control` (phần thế giới) | `game/main/Control.ts` | `Move` (1 ô, 24/speed tick), `MoveTo` (BFS + chuỗi `Move`), `PixelMove`, `JumpMap`, `ChangeStage` |
+| `main/WorldPanel` | `game/main/WorldPanel.ts` | Phím giữ → `PixelMove` mỗi tick; `correctMoveDis`/`findMoveDis` trượt dọc tường; chạm → `findPath` + `changeDirMoveVectorToPixelMove` (gồm đi chéo, căn lưới trước) |
+| `main/GameWorld` (một phần) | `game/main/GameWorld.ts` | Tra model/NPC, `getSpeed` (6 px/tick), `searchPath` (BFS), `logicNPCs`, `logicOtherModels` |
+| `map/GameMap.findPath` | `game/map/GameMap.ts` | Tìm đường kiểu A* đơn giản (chi phí = khoảng cách tới điểm đầu + tới đích), cho phép đích là ô có NPC |
+| `common/Tool` | `sqrt`, `getCost`, `isColliding`, `rand` | |
+
+Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlayer.logicPlayer` → `logicNPCs`
+→ `WorldPanel.handleKey` → `setCameraToPlayer`. Lệnh chạm được xử lý lúc nhả (`pointReleasedFlag`).
+
+### 11.2 Chưa port / thay thế
+- `NPC.doNpc` (mở hội thoại, shop, nhiệm vụ) là hook rỗng. Đi vào NPC sẽ gọi hook đó thay vì đi xuyên qua.
+- Trận đánh khi chạm quái (`logicNPCs` → `toBattle`), đi theo đội, pet và lính đánh thuê đi theo,
+  tự động tìm đường tới nhiệm vụ (`autoMoveControlList`), chế độ hộ tống.
+- Chạm vào NPC: Java dùng `getPointCheckNPC` với vùng chạm theo pixel; web dùng ô lưới.
+- Các lệnh `MoveTo` của "người chơi khác" trên bản đồ thử do `MapScene` giả lập server phát ra.
+
+### 11.3 Đã kiểm chứng (`tests/movement.test.ts`, không cần ảnh)
+- `Tool.sqrt` khớp `floor(sqrt)`; BFS ra đường ngắn nhất và đi được, trả rỗng khi bị vây.
+- `findPath` tới được đích, trả null khi đích kín.
+- Giữ phím: 6 px/tick, dừng trước vật cản. **Trượt góc**: kết quả khớp với tính tay từ code Java
+  (dịch phải 6 px về khe hở gần nhất rồi đi tiếp).
+- Chạm để đi tới đúng ô và căn lưới. `MoveTo` đi 12 ô trong đúng 49 tick (12 × 4 + 1).
+- NPC đi lang thang 3.000 tick không ra khỏi phạm vi.
+- Trên Chromium: chạm để đi (có hiệu ứng điểm chạm 1216), phím, người chơi khác đi `MoveTo`, NPC đi lang
+  thang, không lỗi console.

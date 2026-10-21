@@ -3,7 +3,7 @@
 // Not ported yet: path finding, small map, escort UI, arrow guides.
 import type { Graphics } from '../../midp/Graphics';
 import { DataInputStream } from '../common/DataStream';
-import { byte2short, getOffsetValue } from '../common/Tool';
+import { byte2short, getCost, getOffsetValue, getXKey, getYKey, setKeyXY } from '../common/Tool';
 import { setPlKey } from '../common/Utilities';
 import { GameImage } from '../image/GameImage';
 import { Image } from '../image/Image';
@@ -22,6 +22,14 @@ export const TAG_MAP_STAGE_INIT = 8;
 const DRAW_MAP_CLOSE = 1;
 const DRAW_NORMAL_MAP = 2;
 const DRAW_BATTLE_BUFFER = 3;
+
+/** One open/closed-list entry of findPath: [x px, y px, cost, dir back to the parent]. */
+type PathNode = [number, number, number, number];
+
+// WorldPanel.getMoveXByDir/getMoveYByDir/getReverseDir, inlined to avoid a module cycle.
+const moveX = (d: number, n: number) => (d === 0 ? n : d === 1 ? -n : 0);
+const moveY = (d: number, n: number) => (d === 2 ? n : d === 3 ? -n : 0);
+const reverseDir = (d: number) => (d === 0 ? 1 : d === 1 ? 0 : d === 2 ? 3 : d === 3 ? 2 : 8);
 
 export interface CameraTarget {
   getPx(): number;
@@ -80,6 +88,12 @@ export class GameMap {
   m_bbHeight = 0;
   m_bbScreenWidth = 0;
   m_bbScreenHeight = 0;
+  /** Path-search scratch tables (byte in Java: values wrap past 127 like the original). */
+  searchStep: Int8Array[] = [];
+  nextSearchPosX: Int8Array = new Int8Array(0);
+  nextSearchPosY: Int8Array = new Int8Array(0);
+  /** GameWorld.getNPC(gx, gy) != null; injected by GameWorld to keep this module standalone. */
+  static npcAt: (gx: number, gy: number) => boolean = () => false;
   /** Characters to draw on the player layer (GameWorld.otherModels + NPCs + myPlayer in Java). */
   models: MapModel[] = [];
   camera: CameraTarget | null = null;
@@ -112,6 +126,90 @@ export class GameMap {
     const bit = this.mapColumns * gy + gx;
     const word = bit >> 5;
     return word < 0 || word >= cd.length || (cd[word] & (1 << (bit & 31))) === 0;
+  }
+
+  clearSearchTable(): void {
+    for (const row of this.searchStep) row.fill(-1);
+  }
+
+  /**
+   * Pointer path finding (GameMap.findPath): best-first search over 4-neighbours in pixel
+   * coordinates with `step` px moves, scoring each cell by distance-to-start + distance-to-goal.
+   * Returns the list of directions (0 right, 1 left, 2 down, 3 up) or null.
+   * A blocked goal is allowed when an NPC stands on it, so the player can walk up to NPCs.
+   */
+  findPath(sgx: number, sgy: number, tgx: number, tgy: number, step: number): number[] | null {
+    if (sgx === tgx && sgy === tgy) return null;
+    const sx = sgx * TILE;
+    const sy = sgy * TILE;
+    const tx = tgx * TILE;
+    const ty = tgy * TILE;
+    this.clearSearchTable();
+    const open: PathNode[] = [];
+    const closed: PathNode[] = [];
+    let cur: PathNode | null = [sx, sy, getCost(sx, sy, tx, ty), 8];
+    closed.push(cur);
+    this.searchStep[sgy][sgx] = 1;
+    let x: number;
+    let y: number;
+    do {
+      this.findAndCalculate(cur[0], cur[1], sx, sy, tx, ty, tgx, tgy, open, step);
+      cur = this.findLessCostPos(open);
+      if (cur == null) return null;
+      open.splice(open.indexOf(cur), 1);
+      closed.push(cur);
+      y = cur[1];
+      x = cur[0];
+      this.searchStep[(y / TILE) | 0][(x / TILE) | 0] = 1;
+    } while (x !== tx || y !== ty);
+    return this.getPath(closed, cur, sx, sy, step);
+  }
+
+  protected findAndCalculate(x: number, y: number, sx: number, sy: number, tx: number, ty: number, tgx: number, tgy: number, open: PathNode[], step: number): void {
+    this.calculateCost(x, y - step, sx, sy, tx, ty, tgx, tgy, open, 2);
+    this.calculateCost(x, y + step, sx, sy, tx, ty, tgx, tgy, open, 3);
+    this.calculateCost(x - step, y, sx, sy, tx, ty, tgx, tgy, open, 0);
+    this.calculateCost(x + step, y, sx, sy, tx, ty, tgx, tgy, open, 1);
+  }
+
+  protected calculateCost(x: number, y: number, sx: number, sy: number, tx: number, ty: number, tgx: number, tgy: number, open: PathNode[], dirBack: number): void {
+    const gx = (x / TILE) | 0;
+    const gy = (y / TILE) | 0;
+    if (gx < 0 || gx >= this.mapColumns || gy < 0 || gy >= this.mapRows) return;
+    if (!this.isCanPass(gx, gy) && (gx !== tgx || gy !== tgy || !GameMap.npcAt(tgx, tgy))) return;
+    if (this.searchStep[gy][gx] > 0) return;
+    open.push([x, y, getCost(x, y, sx, sy) + getCost(x, y, tx, ty), dirBack]);
+    this.searchStep[gy][gx] = 1;
+  }
+
+  /** First entry with the strictly lowest cost (ties keep the earliest, as in Java). */
+  protected findLessCostPos(open: PathNode[]): PathNode | null {
+    if (open.length === 0) return null;
+    let best = open[0];
+    for (let i = 1; i < open.length; i++) if (open[i][2] < best[2]) best = open[i];
+    return best;
+  }
+
+  protected getPath(closed: PathNode[], end: PathNode | null, sx: number, sy: number, step: number): number[] | null {
+    if (end == null || (end[0] === sx && end[1] === sy)) return null;
+    const path: number[] = [];
+    let k = setKeyXY(end[0] + moveX(end[3], step), end[1] + moveY(end[3], step));
+    path.unshift(reverseDir(end[3]));
+    for (;;) {
+      const x = (getXKey(k) << 16) >> 16;
+      const y = (getYKey(k) << 16) >> 16;
+      if (x === sx && y === sy) return path;
+      const node = this.getPathInfoByPos(x, y, closed);
+      if (node == null) return null;
+      closed.splice(closed.indexOf(node), 1);
+      k = setKeyXY(node[0] + moveX(node[3], step), node[1] + moveY(node[3], step));
+      path.unshift(reverseDir(node[3]));
+    }
+  }
+
+  protected getPathInfoByPos(x: number, y: number, list: PathNode[]): PathNode | null {
+    for (let i = list.length - 1; i >= 0; i--) if (list[i][0] === x && list[i][1] === y) return list[i];
+    return null;
   }
 
   getPlayerLayer(): PlayerLayer | null {
@@ -208,6 +306,9 @@ export class GameMap {
     this.mapRows = byte2short(dis.readByte());
     this.mapWidth = this.mapColumns * TILE;
     this.mapHeight = this.mapRows * TILE;
+    this.searchStep = Array.from({ length: this.mapRows }, () => new Int8Array(this.mapColumns));
+    this.nextSearchPosX = new Int8Array(this.mapRows * this.mapColumns);
+    this.nextSearchPosY = new Int8Array(this.mapRows * this.mapColumns);
     const nImg = byte2short(dis.readByte());
     this.mapImages = [];
     for (let i = 0; i < nImg; i++) {
