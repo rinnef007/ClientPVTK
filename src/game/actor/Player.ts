@@ -1,5 +1,6 @@
 // com.hz.actor.Player: world movement plus the data the UI screens read (bag, money, stats).
 import type { Mission } from '../core/Mission';
+import type { Skill } from '../core/Skill';
 import type { PlayerBag } from './Item';
 import { Model, TYPE_PLAYER } from './Model';
 
@@ -38,8 +39,25 @@ export class Player extends Model {
   countryRank = '';
   /** The active pet (Player.getPet), built from the item in equipment slot 1. */
   pet: Player | null = null;
+  /** Learnt skills and formations (Player.skillList / formationList, sent by the server). */
+  skillList: Skill[] = [];
+  formationList: Skill[] = [];
+  /** Auto-battle skill slots (skill ids, 0 = empty) and the auto-cast active skill. */
+  autoSkillID: number[] = [];
+  autoSkillID_Initiative = 0;
   /** Missions in progress (Player.missionList; null entries are empty slots). */
   missionList: (Mission | null)[] = [];
+
+  /** Player.isAutoSkill: the skill's auto slot index, or -1. */
+  isAutoSkill(id: number): number {
+    return this.autoSkillID.indexOf(id);
+  }
+
+  /** Player.getSkillListByType. */
+  static getSkillListByType(list: Skill[] | null, type: number): Skill[] | null {
+    if (list == null || list.length === 0) return null;
+    return list.filter((s) => s != null && s.type === type);
+  }
 
   getPet(): Player | null {
     return this.pet;

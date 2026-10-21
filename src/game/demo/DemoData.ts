@@ -2,6 +2,7 @@
 // server at login; nothing here is taken from server data. Icon frames are picked from the item
 // sheet /common/1 without knowing which frame is which item type.
 import { BAG_START, ITEM_TYPE_PET, Item, PlayerBag, SLOT_PET } from '../actor/Item';
+import { SKILL_TYPE_ACTIVE, SKILL_TYPE_AUTO, SKILL_TYPE_PASSIVE, Skill } from '../core/Skill';
 import { CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../actor/MyPet';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, ATTR_MP_MAX, type Player } from '../actor/Player';
@@ -85,6 +86,31 @@ export function makeDemoMissions(): Mission[] {
   return [kill, collect, talk];
 }
 
+function skill(id: number, name: string, type: number, level: number, fields: Partial<Skill>): Skill {
+  return Object.assign(new Skill(), { id, name, type, level }, fields);
+}
+
+/** Made-up skills (names, numbers and powers are not from the game data). */
+export function makeDemoSkills(): Skill[] {
+  return [
+    skill(101, 'Kiếm thuật (demo)', SKILL_TYPE_PASSIVE, 5, { power1: 28, powerValue1: 10, info: 'Kỹ năng giả để thử màn hình.' }),
+    skill(102, 'Thân pháp (demo)', SKILL_TYPE_PASSIVE, 3, { addLevel: 1, power1: 11, powerValue1: 120 }),
+    skill(201, 'Chém mạnh (demo)', SKILL_TYPE_ACTIVE, 8, {
+      area: 10, skillAtkType: 0, power1: 58, powerValue1: 50, atk_time: 1, useMP: 30, skillWeapon: 1,
+      info: 'Kỹ năng giả: một đòn chém vào một địch.',
+    }),
+    skill(202, 'Hồi phục (demo)', SKILL_TYPE_ACTIVE, 4, { area: 20, skillAtkType: 6, power1: 49, powerValue1: 300, useMP: 50, isLearnByBook: true }),
+    skill(301, 'Phản đòn (demo)', SKILL_TYPE_AUTO, 2, { area: 20, skillAtkType: 6, power1: 41, powerValue1: 5, round: 3, statusBit1: 11 }),
+  ];
+}
+
+function makeDemoPetSkills(): Skill[] {
+  return [
+    skill(401, 'Cắn xé (demo)', SKILL_TYPE_ACTIVE, 3, { area: 10, skillAtkType: 2, power1: 59, powerValue1: 20, useMP: 10 }),
+    skill(402, 'Da dày (demo)', SKILL_TYPE_PASSIVE, 2, { power1: 31, powerValue1: 8 }),
+  ];
+}
+
 /** Sprites the demo pets use (for preloading). */
 export const DEMO_PET_SPRITES = [501, 505, 509];
 
@@ -121,6 +147,10 @@ export function fillDemoPlayer(p: Player): void {
   // Combat values for the T.Tính tab (ids as in PlayerInfoUIAction.updatePlayerAttributeUI).
   DEMO_COMBAT_VALUES.forEach(([k, v]) => p.set(k, v));
   p.missionList = makeDemoMissions();
+  p.skillList = makeDemoSkills();
+  p.autoSkillID = [301, 0, 0];
+  p.autoSkillID_Initiative = 201;
+  p.set(5, 12); // skill points
   // The active pet: the item in slot 1 as a MyPet, with made-up stats.
   const petItemInSlot = p.bag.getItem(SLOT_PET);
   if (petItemInSlot != null) {
@@ -132,6 +162,7 @@ export function fillDemoPlayer(p: Player): void {
     [[6, 25], [7, 18], [8, 17], [9, 12], [10, 10]].forEach(([k, v]) => pet.set(k, v));
     DEMO_COMBAT_VALUES.forEach(([k, v]) => pet.set(k, Math.max(1, (v * 0.6) | 0)));
     Object.assign(pet, { cp: 6, grow: 72, compre: 55, growLevel: 7, petAge: 1200, petmaxage: 2000, petHeadIcon: 501 });
+    pet.skillList = makeDemoPetSkills();
     p.pet = pet;
   }
 }

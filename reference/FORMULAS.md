@@ -27,7 +27,7 @@
 1. **Sát thương nhận thêm:**
    - Client cộng 20 + 10 = +30%. Ghi chú người chơi ghi +32%, tức 1,2 × 1,1 nhân với nhau.
    - Có thể server tính kiểu nhân, cũng có thể ghi chú sai. Client không cho biết bên nào đúng.
-   - Tôi chưa xác nhận được bit 3 / bit 10 ứng với "lưu huyết" / "suy nhược". Tôi chỉ ghép theo con số +10 / +20.
+   - Bảng `Define.bufferText` của client xác nhận bit 3 là "Mất Máu" (lưu huyết) và bit 10 là "Suy Yếu" (suy nhược), khớp với ghi chú người chơi.
 2. **Hệ số người chơi tự đặt:** các bản C++ "魔化/战斗叠加" có những hệ số như 1,2 × 1,1 × 0,3 cho buff kỹ năng. Đây là con số người chơi tự gán cho kỹ năng, không có trong `Battle.calc`.
 3. **Chưa kiểm chứng được:**
    - "Chuẩn xác ma pháp cơ bản 100": client không đặt giá trị nào cả, giá trị do server gửi.
