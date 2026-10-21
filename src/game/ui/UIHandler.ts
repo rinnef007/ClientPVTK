@@ -28,6 +28,8 @@ const CLOSE_AS_ACTION = new Set([
 ]);
 
 export const STATUS_CATCH_INPUT = 1;
+/** Status bit 16 (on by default): a tap outside the frame acts as "back". */
+export const STATUS_CLOSE_OUTSIDE = 16;
 export const STATUS_CLOSED = 2;
 
 /** Frame system types (GWidget vmData[0] of the root). */
@@ -76,7 +78,7 @@ export class UIHandler {
   parent: UIHandler | null = null;
   obj: unknown = null;
   input: UIInput | null = null;
-  private flagStatus = STATUS_CATCH_INPUT;
+  private flagStatus = STATUS_CATCH_INPUT | STATUS_CLOSE_OUTSIDE;
 
   constructor(readonly type: number) {}
 
@@ -94,6 +96,7 @@ export class UIHandler {
       ui.input.onAction = () => ui.notifyLayerAction(0);
       // handleSpecificUIKey: these screens get the close key as layer action 1 (their own "back").
       ui.input.onClose = () => (CLOSE_AS_ACTION.has(type) ? ui.notifyLayerAction(1) : ui.notifyLayerClose());
+      ui.input.closeOnOutsideTap = () => ui.isStatusFlag(STATUS_CLOSE_OUTSIDE) && ui.getFrameSystemType() !== FRAME_FULL_SCREEN;
       ui.input.afterKey = (key, target) => {
         for (const hook of UIHandler.updateUIHooks) hook(ui, key, target);
         // updateKeyUpDown

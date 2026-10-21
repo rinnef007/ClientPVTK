@@ -1,10 +1,16 @@
 // The parts of com.hz.item.Item and com.hz.actor.PlayerBag the UI screens read: icon frame in
 // image set 1 (bagIcon), grade (back plate), count, stars, suit id and expiry. Real items come
 // from the server; the test map builds a few by hand.
+import { PowerString } from '../string/PowerString';
 export const ITEM_ID_QUICK_FILL_HP = -10000;
 export const ITEM_TYPE_PET = 32;
 /** Equipment slot of the active pet. */
 export const SLOT_PET = 1;
+
+/** Define.getGradeColor: item / pet grade 0..5 → text colour. */
+export function getGradeColor(g: number): number {
+  return [0xe5e5e5, 4978754, 4369912, 16753920, 12991465, 0xff0000][g] ?? 0xffffff;
+}
 
 export class Item {
   id = 0;
@@ -32,6 +38,41 @@ export class Item {
   /** Appearance long (a pet item's sprite icon). */
   icon = 0n;
   info = '';
+
+  /** Selling price (shown as an icon and number in the item box). */
+  price = 0;
+  /** Bound to the character (no "Khóa" option); server data. */
+  binded = false;
+
+  isEquited(): boolean {
+    return this.slotPos >= 0 && this.slotPos < BAG_START;
+  }
+
+  isPetType(): boolean {
+    return this.type === ITEM_TYPE_PET;
+  }
+
+  isPetEquip(): boolean {
+    return this.slotPos === SLOT_PET;
+  }
+
+  /** Item.getItemClass: 1/2 equipment, 3 pet, 4 consumable, 5 / 6 other. */
+  getItemClass(): number {
+    const t = this.type;
+    if (t === 32) return 3;
+    if (t === 30) return 6;
+    if (t === 25 || t === 29 || t === 33) return 5;
+    if (t >= 13 && t <= 24) return 1;
+    if (t >= 34 && t <= 39) return 1;
+    return (t >= 26 && t <= 28) || t === 31 ? 4 : 2;
+  }
+
+  /** Item.getNameInfo: the icon and the name in its grade colour (+ "(Tiến bậc)"). */
+  getNameInfo(withIcon = true): string {
+    const name = PowerString.makeColorString(this.name, getGradeColor(this.grade));
+    const up = this.isUpgradeItem ? PowerString.makeColorString('(Tiến bậc)', 16776960) : '';
+    return (withIcon ? PowerString.makeItemIconString(this.bagIcon, this.grade, 0) : '') + name + up;
+  }
 
   /** Item.getPowerDesc: the attribute text built from server data; the demo text here. */
   getPowerDesc(): string {
@@ -92,6 +133,26 @@ export class PlayerBag {
   /** Player.getItemNumByIdInBag: the stack total of item `id` in the bag. */
   getItemNumByIdInBag(id: number): number {
     return this.bagItems().reduce((n, [, it]) => (it.id === id ? n + it.quantity : n), 0);
+  }
+
+  /** PlayerBag.getEquipPosByType: the equipment slots an item type goes into. */
+  static getEquipPosByType(type: number): number[] | null {
+    if (type === 32) return [1];
+    const table: Record<number, number[]> = { 0: [7], 1: [5], 2: [12], 3: [13], 4: [11], 5: [4], 6: [9], 7: [6], 8: [0], 9: [2, 16], 10: [14], 11: [15], 12: [3] };
+    if (table[type]) return table[type];
+    if ((type >= 13 && type <= 24) || (type >= 34 && type <= 39)) return [8, 10];
+    return null;
+  }
+
+  /** PlayerBag.getCompareEquip: the equipped item an item of this type would replace. */
+  static getCompareEquip(bag: PlayerBag | null, type: number): Item | null {
+    const pos = PlayerBag.getEquipPosByType(type);
+    if (bag == null || pos == null) return null;
+    for (const p of pos) {
+      const it = p >= 0 && p < BAG_START ? bag.getItem(p) : null;
+      if (it != null && (type !== 24 || it.type === type)) return it;
+    }
+    return null;
   }
 
   /** How many equipped items (slots 0..17) belong to a suit. */

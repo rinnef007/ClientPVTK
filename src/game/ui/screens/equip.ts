@@ -3,7 +3,7 @@
 // updateDataToPlayerMoney / updateItemNameToBagUI / updateEquipUI and
 // UIAction.processPlayerEquipLayer (jadx + Vineflower decompiles).
 // Not ported: the shop / resolve / enchant / mobile-warehouse modes (their tabs stay hidden or
-// empty: they need server data), the item pop-up menu (ui/4) and bag sorting (server request).
+// empty: they need server data) and bag sorting (server request). The item pop-up is ./equipPop.
 import { GContainer, GGameIcon, GIcon, GLabel, GLinePanel, GWidget } from '../../gui/GWidget';
 import { BAG_PAGE_SIZE, BAG_START, Item, type PlayerBag } from '../../actor/Item';
 import { ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, type Player } from '../../actor/Player';
@@ -12,6 +12,7 @@ import { GameSprite } from '../../sprite/GameSprite';
 import { PowerString } from '../../string/PowerString';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
+import { TYPE_EQUIP_POP, createPlayerEquipPopMenu, processEquipPopLayer } from './equipPop';
 
 export const TYPE_PLAYER_EQUIP = 2;
 /** ui/67 holds the shop item panel (39) the equipment screen borrows. */
@@ -287,14 +288,13 @@ function processPlayerEquipLayer(ui: UIHandler, action: number): void {
   const win = w.getParentWindow();
   if (win == null) return;
   const wev = win.getEventType();
-  if ((wev === 30 || wev === 34 || wev === 41) && item instanceof Item) {
-    // createPlayerEquipPopMenu (ui/4 with item stats and actions) is not ported: show the item text.
-    alertMessage(item.description || item.name, item.name);
-  }
+  if ((wev === 30 || wev === 34 || wev === 41) && item instanceof Item) createPlayerEquipPopMenu(ui, item, tabText(ui));
 }
 
 registerScreen('equip', {
-  uiTypes: [TYPE_PLAYER_EQUIP, TYPE_SHOP_PANEL],
+  // ui/4 (item pop-up), 52 / 31 / 32 (pet info and its tabs, from the pet item).
+  uiTypes: [TYPE_PLAYER_EQUIP, TYPE_SHOP_PANEL, TYPE_EQUIP_POP, 52, 31, 32],
   open: (tab = 0) => createWorldEquipUI(GameWorld.myPlayer, tab),
-  processLayerAction: processPlayerEquipLayer,
+  processLayerAction: (ui, action) =>
+    ui.getType() === TYPE_EQUIP_POP ? processEquipPopLayer(ui, action) : processPlayerEquipLayer(ui, action),
 });

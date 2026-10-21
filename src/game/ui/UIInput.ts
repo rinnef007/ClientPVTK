@@ -37,6 +37,8 @@ export class UIInput {
   onAction: (w: GWidget | null) => void = () => {};
   /** Called for "back" (soft-right or a close button). */
   onClose: () => void = () => {};
+  /** UIHandler.handlerMouseReleased: whether a tap outside the frame closes the UI. */
+  closeOnOutsideTap: () => boolean = () => false;
   /** UIHandler.updateUI: runs after every handled key with the container that took it. */
   afterKey: (key: number, target: GContainer | null) => void = () => {};
 
@@ -117,7 +119,13 @@ export class UIInput {
   pointerReleased(x: number, y: number): void {
     const w = this.frame.searchPressGWidget(x, y);
     this.setActionGWidget(w);
-    if (w == null) return;
+    if (w == null) {
+      // A short tap outside the frame closes it (status 16, not full-screen frames).
+      const f = this.frame;
+      const inside = x >= f.getXX() && x < f.getXX() + f.getW() && y >= f.getYY() && y < f.getYY() + f.getH();
+      if (this.dragDistance < 30 && !inside && this.closeOnOutsideTap()) this.handleKey(KEY_SOFT_RIGHT);
+      return;
+    }
     if (w instanceof GScrollBar) {
       if (this.dragDistance > 10 || w.parent == null) return;
       if (w.isRectInTop(x, y)) w.parent.moveDown();

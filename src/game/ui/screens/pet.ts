@@ -7,6 +7,7 @@
 // every other button (fight / rest, release, rename, seal, items, the attribute and skill tabs)
 // asks the server and so shows STR_NEED_SERVER.
 import { GContainer, GGameIcon, GIcon, GLabel, GWidget, GWindow } from '../../gui/GWidget';
+import { getGradeColor } from '../../actor/Item';
 import { MyPet } from '../../actor/MyPet';
 import type { Player } from '../../actor/Player';
 import * as GameWorld from '../../main/GameWorld';
@@ -25,9 +26,6 @@ const EVENT_TAB_PET = 11203;
 const EVENT_TAB_MERCENARY = 11213;
 const EVENT_PET_TAB = 60;
 
-/** Define.getGradeColor. */
-const GRADE_COLOR = [0xe5e5e5, 4978754, 4369912, 16753920, 12991465, 0xff0000];
-const getGradeColor = (g: number) => GRADE_COLOR[g] ?? 0xffffff;
 const JOB_TEXT = ['', 'H.Khách', 'T.Chân', 'Ch.sĩ', 'P.sư', 'Hiền Giả', 'Võ Thánh', 'Duệ Trí', 'Dũng Mãnh', 'Tấn Tiệp', 'Vua Súng', 'Chùy Sư', 'Lam Vũ'];
 
 const isMyActivePet = (p: unknown) => p != null && p === GameWorld.myPlayer?.getPet();

@@ -205,6 +205,11 @@ export class PowerString {
     return `/c${toHexString(rgb)}${underLine ? UNDERLINE_CHAR : ''}${text}/p`;
   }
 
+  /** PowerString.makeItemIconString: an item icon (frame of set 1) on its grade's back plate. */
+  static makeItemIconString(bagIcon: number, grade: number, num: number): string {
+    return makeIndexValue('i', num, bagIcon, grade + 1);
+  }
+
   /** "/i" + set id (2 digits) + frame (2 digits) + "0": an image-set icon inline. */
   static makeIconString(setId: number, frame: number): string {
     return makeIndexValue('i', setId, frame, 0);

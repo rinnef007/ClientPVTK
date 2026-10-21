@@ -23,11 +23,12 @@ function item(name: string, bagIcon: number, grade: number, quantity = 1, descri
 export function makeDemoBag(): PlayerBag {
   const bag = new PlayerBag();
   const equip: [number, Item][] = [
-    [0, item('Mũ demo', 10, 1)],
-    [3, item('Áo demo', 12, 2)],
-    [2, item('Vũ khí demo', 3, 3)],
-    [4, item('Giày demo', 16, 1)],
-    [6, item('Nhẫn demo', 20, 4)],
+    // Types follow PlayerBag.getEquipPosByType so each sits in a slot of its type.
+    [0, item('Mũ demo', 10, 1, 1, '', 8)],
+    [3, item('Áo demo', 12, 2, 1, '', 12)],
+    [2, item('Vũ khí demo', 3, 3, 1, '', 9)],
+    [4, item('Giày demo', 16, 1, 1, '', 5)],
+    [6, item('Nhẫn demo', 20, 4, 1, '', 7)],
   ];
   for (const [slot, it] of equip) bag.setItem(slot, it);
   const bagItems = [
@@ -36,7 +37,7 @@ export function makeDemoBag(): PlayerBag {
     Object.assign(item('Đá cường hóa demo', 40, 2, 5), { id: DEMO_STONE_ID }),
     item('Bảo thạch demo', 45, 3, 2),
     item('Cuộn dịch chuyển demo', 50, 1, 3, 'Về thành (dữ liệu giả).', 31),
-    item('Trang bị demo', 14, 5),
+    item('Vũ khí túi demo', 14, 5, 1, '', 9),
   ];
   bagItems.forEach((it, i) => bag.setItem(BAG_START + i, it));
   // Pet items (type 32): the active pet sits in equipment slot 1, two more wait in the bag.
