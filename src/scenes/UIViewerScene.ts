@@ -3,7 +3,9 @@ import { FONT_SMALL, FONT_MEDIUM, type Graphics } from '../midp/Graphics';
 import { KEY_DOWN, KEY_FIRE, KEY_LEFT, KEY_RIGHT, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_UP, type InputState } from '../midp/Input';
 import { getAssetFS } from '../game/common/Utilities';
 import { imageSetFiles } from '../game/main/GameView';
-import { buildPreviewFile, collectImageSets, drawPreview, type PreviewWidget } from '../game/ui/UIPreview';
+import { uiFont, uiScreen, type GWidget } from '../game/gui/GWidget';
+import { buildAndShow } from '../game/ui/UIBuilder';
+import { collectImageSets } from '../game/ui/UIPreview';
 import { parseUIFile, uiMetrics, type UIFile } from '../game/ui/XmlParse';
 import { MenuScene } from './MenuScene';
 import { COLOR_DIM, COLOR_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
@@ -14,7 +16,7 @@ export class UIViewerScene implements Scene {
   private readonly ids: number[];
   private idx = 0;
   private file: UIFile | null = null;
-  private preview: PreviewWidget | null = null;
+  private root: GWidget | null = null;
   private status = '';
   private showInfo = true;
   private token = 0;
@@ -24,8 +26,14 @@ export class UIViewerScene implements Scene {
       .filter((n) => n.endsWith('.ui'))
       .map((n) => Number(n.slice(0, -3)))
       .sort((a, b) => a - b);
-    uiMetrics.screenWidth = SCREEN_WIDTH;
-    uiMetrics.screenHeight = SCREEN_HEIGHT;
+    uiMetrics.screenWidth = uiScreen.width = SCREEN_WIDTH;
+    uiMetrics.screenHeight = uiScreen.height = SCREEN_HEIGHT;
+    // Labels size themselves from text metrics while the tree is built (GLabel.resetSize).
+    const measure = document.createElement('canvas').getContext('2d')!;
+    measure.font = `${FONT_MEDIUM}px system-ui, "Segoe UI", Roboto, Arial, sans-serif`;
+    uiFont.height = FONT_MEDIUM + 2;
+    uiMetrics.fontHeight = uiFont.height;
+    uiFont.stringWidth = (t) => Math.ceil(measure.measureText(t).width);
     void this.load();
   }
 
@@ -34,7 +42,7 @@ export class UIViewerScene implements Scene {
     if (id === undefined) return;
     const token = ++this.token;
     this.status = 'Đang tải…';
-    this.preview = null;
+    this.root = null;
     const fs = getAssetFS();
     await fs.preload([`ui/${id}.ui`]);
     const data = fs.get(`ui/${id}.ui`);
@@ -45,7 +53,7 @@ export class UIViewerScene implements Scene {
       await fs.preload(sets.flatMap(imageSetFiles));
       if (token !== this.token) return;
       this.file = f;
-      this.preview = buildPreviewFile(f);
+      this.root = buildAndShow(f);
       this.status = '';
     } catch (e) {
       this.status = `Lỗi đọc: ${(e as Error).message}`;
@@ -88,7 +96,10 @@ export class UIViewerScene implements Scene {
     g.setColor(0x202833);
     g.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     g.setFontSize(FONT_MEDIUM);
-    if (this.preview) drawPreview(g, this.preview, 0, 0, -1);
+    if (this.root) {
+      this.root.paint(g);
+      g.setClip(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    }
     if (!this.showInfo) return;
     g.setFontSize(FONT_SMALL);
     g.setColor(0xc0000000);
@@ -98,6 +109,6 @@ export class UIViewerScene implements Scene {
     const lib = this.file?.lib.length ?? 0;
     g.drawString(`ui/${id}.ui  (${this.idx + 1}/${this.ids.length})  thư viện: ${lib}  ${this.status}`, 4, SCREEN_HEIGHT - 32, LEFT | TOP);
     g.setColor(COLOR_DIM);
-    g.drawString('←/→ đổi · Enter ẩn chú thích · Esc thoát · bản vẽ tạm (chưa có layout)', 4, SCREEN_HEIGHT - 17, LEFT | TOP);
+    g.drawString('←/→ đổi · Enter ẩn chú thích · Esc thoát · chữ: font hệ thống (chưa có .t)', 4, SCREEN_HEIGHT - 17, LEFT | TOP);
   }
 }
