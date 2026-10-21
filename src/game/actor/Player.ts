@@ -45,8 +45,31 @@ export class Player extends Model {
   /** Auto-battle skill slots (skill ids, 0 = empty) and the auto-cast active skill. */
   autoSkillID: number[] = [];
   autoSkillID_Initiative = 0;
+  /** Society tab values (server data): arena / sky-arena points, combat power, enchant points, god EXP. */
+  arenaPoint = 0;
+  skyarenaPoint = 0;
+  combatPoint = 0;
+  enchantValue = 0;
+  exp2 = 0;
+  expMax2 = 0;
+  vipLevel = 0;
+  vipLevel2 = 0;
+  partnerName = '';
+  /** 1 master, 2 apprentice. */
+  masterFlag = 0;
+  title = '';
+  helpCountry = '';
+  lovePlayer = '';
+  Pkwincount = 0;
+  Pklosecount = 0;
   /** Missions in progress (Player.missionList; null entries are empty slots). */
   missionList: (Mission | null)[] = [];
+
+  /** Player.getPKWin: duel win rate. */
+  getPKWin(): string {
+    const n = this.Pkwincount + this.Pklosecount;
+    return n <= 0 ? '0%' : `${Math.trunc((this.Pkwincount * 100) / n)}%`;
+  }
 
   /** Player.isAutoSkill: the skill's auto slot index, or -1. */
   isAutoSkill(id: number): number {

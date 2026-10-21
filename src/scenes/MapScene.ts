@@ -34,8 +34,6 @@ const HUD_H = 20;
 /** Image sets the HUD code uses beyond those named in ui/211: mini map marks, small digits, combat digits. */
 const HUD_EXTRA_SETS = [4, 1002, 238, 216];
 /** Made-up numbers for the HUD: there is no server to send the real player data. */
-/** Made-up combat power (Player.combatPoint comes from the server). */
-const DEMO_COMBAT_POINT = 12345;
 function hudPet(p: Player | null): HudPetInfo | null {
   if (!(p instanceof MyPet)) return null;
   return {
@@ -181,7 +179,7 @@ export class MapScene implements Scene {
         maxMp: me.get(ATTR_MP_MAX),
         exp: me.get(ATTR_EXP),
         maxExp: me.get(ATTR_EXP_MAX),
-        combatPoint: DEMO_COMBAT_POINT,
+        combatPoint: me.combatPoint,
         value118: 0,
         level2: me.level2,
         pet: hudPet(me.getPet()),

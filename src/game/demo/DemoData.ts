@@ -151,6 +151,12 @@ export function fillDemoPlayer(p: Player): void {
   p.autoSkillID = [301, 0, 0];
   p.autoSkillID_Initiative = 201;
   p.set(5, 12); // skill points
+  // X.Hội values: honour 68, storage slots 15, monsters killed 18, duels won 19.
+  [[68, 320], [15, 24], [18, 1520], [19, 7]].forEach(([k, v]) => p.set(k, v));
+  Object.assign(p, {
+    arenaPoint: 150, skyarenaPoint: 40, combatPoint: 12345, enchantValue: 2600, exp2: 0, expMax2: 50000,
+    Pkwincount: 7, Pklosecount: 3, title: 'Danh hiệu demo',
+  });
   // The active pet: the item in slot 1 as a MyPet, with made-up stats.
   const petItemInSlot = p.bag.getItem(SLOT_PET);
   if (petItemInSlot != null) {

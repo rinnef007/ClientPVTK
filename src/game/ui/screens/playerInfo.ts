@@ -1,9 +1,9 @@
 // The character screen (ui/3): UIHandler.createWorldPlayerInfoUI, PlayerInfoUIAction
 // (updateDataToPlayerPetMerInfoUI, clean/addPlayerInfoTabGWidget, updatePlayerBaseUI,
 // processBaseAction, isVaileAttBuff, cancelChangeAttValue) and UIHandler.updatePlayerPetMerInfoUI
-// (CFR decompile). The base tab (C.Bản), the attribute tab (T.Tính, ./playerAttribute) and the
-// skill tab (./playerSkill) are ported; the other tabs (society, photos, talents) and confirming
-// attribute points need more data or the server.
+// (CFR decompile). The base tab (C.Bản), the attribute tab (T.Tính, ./playerAttribute), the
+// skill tab (./playerSkill) and the society tab (X.Hội, ./playerSociety) are ported; the photo and
+// talent tabs and confirming attribute points need more data or the server.
 import { GGameBar, GGameIcon, GLabel, GLinePanel, GWindow } from '../../gui/GWidget';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX, ATTR_POINTS, Player } from '../../actor/Player';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../../actor/MyPet';
@@ -13,6 +13,7 @@ import { UIHandler, alertMessage, type UIListener } from '../UIHandler';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
 import { TYPE_PLAYER_ATTRIBUTE, processAttributeAction, updatePlayerAttributeUI } from './playerAttribute';
 import { TYPE_PLAYER_SKILL, addSkillPanelTab, processSkillListAction, updatePlayerSkillUI } from './playerSkill';
+import { processSocietyAction, updatePlayerSocietyUI } from './playerSociety';
 
 export const TYPE_PLAYER_INFO = 3;
 const FRAME_PLAYER_INFO = 502;
@@ -95,6 +96,7 @@ export class PlayerInfoUIAction implements UIListener {
     if (tab === TAB_BASE && action === 0) this.processBaseAction(ui);
     else if (tab === TAB_ATTRIBUTE && action === 0) processAttributeAction(ui, this.player, action);
     else if (tab === TAB_SKILL) processSkillListAction(ui, this.player, action);
+    else if (tab === TAB_SOCIETY && action === 0) processSocietyAction(ui, this.player, action);
   }
 
   /** Closing with changed points asks to confirm them (a server request); offline they are undone. */
@@ -252,7 +254,7 @@ export function updateDataToPlayerInfoUI(ui: UIHandler, p: Player, tabId: number
   else if (tab === TAB_SKILL) {
     addSkillPanelTab(ui);
     updatePlayerSkillUI(ui, p, true);
-  }
+  } else if (tab === TAB_SOCIETY) updatePlayerSocietyUI(ui, p);
   else alertMessage(STR_NEED_SERVER); // the other tabs are not ported
   if (full) addPlayerInfoTabGWidget(ui, tab);
 }
