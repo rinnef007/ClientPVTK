@@ -8,6 +8,8 @@ import type { AssetManifest } from '../../midp/ImageStore';
 export class AssetFS {
   private files = new Map<string, Uint8Array>();
   private known = new Set<string>();
+  /** Existing files that were read before being preloaded (see resolve()). */
+  private missed = new Set<string>();
 
   constructor(
     manifest: AssetManifest | null,
@@ -24,7 +26,31 @@ export class AssetFS {
 
   /** Bytes of an already-preloaded file, or null (Utilities.getFileByte). */
   get(path: string): Uint8Array | null {
-    return this.files.get(normalize(path)) ?? null;
+    const p = normalize(path);
+    const data = this.files.get(p);
+    if (data) return data;
+    if (this.known.has(p)) this.missed.add(p);
+    return null;
+  }
+
+  /**
+   * Runs synchronous loader code until it stops asking for files that exist but are not loaded
+   * yet, fetching those between attempts. Lets ported Java loaders whose file needs are only known
+   * while they run (e.g. equipment fragments) work unchanged.
+   */
+  async resolve<T>(build: () => T, resetCaches: () => void = () => {}, maxRounds = 4): Promise<T> {
+    this.missed.clear();
+    let result = build();
+    for (let round = 0; round < maxRounds && this.missed.size > 0; round++) {
+      const todo = [...this.missed];
+      this.missed.clear();
+      await this.preload(todo);
+      // Anything built while files were missing (e.g. an image without its palette) is suspect.
+      resetCaches();
+      result = build();
+    }
+    this.missed.clear();
+    return result;
   }
 
   /** Puts bytes directly (tests, generated data). */

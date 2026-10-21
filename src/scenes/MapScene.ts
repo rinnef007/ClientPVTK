@@ -15,12 +15,13 @@ import { GameMap, TAG_FORCE_PAINT, TAG_MAP_IMG_OFF } from '../game/map/GameMap';
 import type { MapModel } from '../game/map/PlayerLayer';
 import { TEST_MAP_SPRITES, buildTestMap } from '../game/map/TestMap';
 import { TILE } from '../game/map/TileLayer';
-import { ANIMATION_MOVE, ANIMATION_STAND, GameSprite, preloadSprite } from '../game/sprite/GameSprite';
+import { ANIMATION_MOVE, ANIMATION_STAND, GameSprite, preloadSprite, resolveSprite } from '../game/sprite/GameSprite';
+import { createSpriteByIcon, encodeIcons } from '../game/sprite/SpriteIcon';
+import { currentAppearance } from './DressingRoomScene';
 import { MenuScene } from './MenuScene';
 import { COLOR_TEXT, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
 import { softKeyAt } from './ui';
 
-const PLAYER_SPRITE = 100;
 /** Pixels per 50ms tick. Simplified: the real Player walks grid paths from server-confirmed moves. */
 const WALK_SPEED = 4;
 const HUD_H = 20;
@@ -64,6 +65,7 @@ class WalkingPlayer implements MapModel {
     const moving = dx !== 0 || dy !== 0;
     if (dx !== 0) this.sprite.setRotate(dx < 0);
     this.sprite.setCurAnimation(moving ? ANIMATION_MOVE : ANIMATION_STAND);
+    this.sprite.cloakSprite?.setCurAnimation(moving ? ANIMATION_MOVE : ANIMATION_STAND);
     if (moving) {
       // Axis-separated so the player slides along walls.
       if (this.canStand(this.px + dx, this.py, map)) this.px += dx;
@@ -94,17 +96,20 @@ export class MapScene implements Scene {
       this.status = 'Lỗi đọc dữ liệu bản đồ';
       return;
     }
-    await Promise.all([PLAYER_SPRITE, ...TEST_MAP_SPRITES].map(preloadSprite));
-    const sprite = GameSprite.createSprite(PLAYER_SPRITE);
+    await Promise.all(TEST_MAP_SPRITES.map(preloadSprite));
+    // Dressed with whatever was chosen in the dressing room (GameSprite.createSpriteByIcon).
+    const [i1, i2, i3] = encodeIcons(currentAppearance);
+    const sprite = await resolveSprite(() => createSpriteByIcon(i1, i2, i3, false));
     if (!sprite) {
-      this.status = `Không tải được sprite ${PLAYER_SPRITE}`;
+      this.status = 'Không dựng được nhân vật';
       return;
     }
     map.initGameMapData(SCREEN_WIDTH, SCREEN_HEIGHT, HUD_H, 0);
     map.loadMapPalette();
     map.getPlayerLayer()?.createMapSprites();
     await map.whenImagesReady();
-    await Promise.all((sprite.fragmentFiles ?? []).map((f) => f?.gameImage?.getImage()?.ready));
+    const parts = [...(sprite.fragmentFiles ?? []), ...(sprite.cloakSprite?.fragmentFiles ?? [])];
+    await Promise.all(parts.map((f) => f?.gameImage?.getImage()?.ready));
     const player = new WalkingPlayer(sprite, 20, 17);
     map.models = [player];
     map.camera = player;

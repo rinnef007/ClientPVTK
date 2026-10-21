@@ -180,7 +180,7 @@ mỗi giai đoạn có thể cần nhiều phiên làm việc.
 | `main/ResourceHandler` | `main/ResourceHandler.ts` | Đủ bảng tra gói (`getAni*PakIDByIndex`), `getAniData`, gói map/fr |
 | `image/GameImage` | `image/GameImage.ts` | |
 | `sprite/FragmentFile`, `Frame`, `Animation` | cùng tên | Port đủ |
-| `sprite/GameSprite` | `sprite/GameSprite.ts` | Nạp, animation, vẽ, cờ trạng thái. **Chưa**: ghép trang bị (`createSpriteByIcon`, `doChangeSpriteIcon`), VIP/QQ, sprite nhà 2 người |
+| `sprite/GameSprite` | `sprite/GameSprite.ts` + `sprite/SpriteIcon.ts` | Nạp, animation, vẽ, cờ trạng thái; ghép trang bị (§10). **Chưa**: VIP/QQ, chế độ sprite giản lược (`createMiniSpriteByIcon`) |
 | `map/GameMap` | `map/GameMap.ts` | Đọc map, va chạm, camera, bộ đệm cuộn vòng (`initMapBuffer`, `updateMapBuffer`, `fillCol/Row`, `drawMapBuffer`). **Chưa**: tìm đường, bản đồ nhỏ, escort, mũi tên chỉ đường |
 | `map/TileLayer`, `PixelLayer`, `PlayerLayer` | cùng tên | `PlayerLayer` vẽ nhân vật qua interface `MapModel` vì `Player/NPC/Model` chưa port |
 
@@ -198,3 +198,43 @@ mỗi giai đoạn có thể cần nhiều phiên làm việc.
 - 2.966/2.966 file `.spr` đọc khớp từng byte (script Python độc lập).
 - 2.964/2.966 sprite nạp đủ mảnh và ảnh qua code TS. Sprite 1132, 1133 tham chiếu mảnh không có trong APK.
 - Chạy trên Chromium: so sánh ảnh sau 8 đoạn đường đi (cuộn từng phần) với ảnh vẽ lại toàn bộ (`TAG_FORCE_PAINT`) thì nền bản đồ khớp từng pixel. Chỗ khác chỉ nằm ở các sprite đang chạy animation.
+
+## 10. Ghép trang bị (`createSpriteByIcon` / `doChangeSpriteIcon`)
+
+### 10.1 Nguồn để dịch
+- jadx đánh dấu `doChangeSpriteIcon` là *"decompiled incorrectly"*. Ngoài ra jadx còn **sai** ở
+  `getHorseSpriteNameIDByWeapon`: với vũ khí loại 17 và 24, bytecode trả về sprite thú cưỡi thường
+  (700/900 + n), nhưng jadx lại ra `base + 15` và `base + 24`.
+- Để có nguồn đáng tin hơn, mình chuyển `classes2.dex` sang jar (dex2jar 2.4.38) rồi decompile bằng
+  **Vineflower 1.10.1**. Sau đó dùng androguard disassemble bytecode Dalvik để đối chiếu từng nhánh
+  khác nhau. Bản port bám theo Vineflower, vì ở mọi điểm đã đối chiếu thì Vineflower khớp với bytecode.
+- Các công cụ trên chỉ chạy trong thư mục tạm, không đưa vào repo.
+
+### 10.2 Cách game mã hoá ngoại hình
+- Mỗi nhân vật có 3 số `long` (icon1..3) do server gửi. Bố cục bit ghi ở đầu `SpriteIcon.ts`.
+- Mỗi mảnh ghép thuộc một bộ phận, xác định bằng `nameID / 1000`: 0 tóc, 1 mặt, 2 tay, 3 chân, 4 vai,
+  5 lưng, 6 áo, 7 quần, 8/9 vũ khí, 10 mũ, 12 màu pet, 14 màu thú cưỡi, 15 hào quang vũ khí, 16 thân
+  giản lược.
+- ID ảnh = `(kiểu << 3) + gốc − 7 + (giới tính << 2) + màu`, nghĩa là mỗi kiểu chiếm 8 ô (2 giới × 4 màu).
+  Màu 1..3 dùng lại PNG của màu 0, kèm bảng màu `.pl` riêng.
+- Sprite gốc được chọn theo vũ khí (`getSpriteNameIDByWeapon`) và thú cưỡi
+  (`getHorseSpriteNameIDByWeapon`). Áo choàng là sprite riêng `1100 + kiểu`, gắn vào vị trí mảnh lưng.
+
+### 10.3 Phần thêm cho web
+- `encodeIcons()`: làm ngược quá trình giải mã. Trong game thật việc này do server làm; ở đây dùng cho
+  màn **Thay trang phục**.
+- `AssetFS.resolve()`: chạy lại code nạp cho tới khi không còn file nào bị thiếu, vì danh sách mảnh
+  trang bị cần dùng chỉ biết được khi đang chạy. Giữa các lần chạy, cache sprite bị xoá để không giữ lại
+  ảnh dựng khi thiếu bảng màu.
+- Mảnh ghép lấy từ cache luôn là **bản sao** (`cloneFragmentFile`) như Java, nên `clearImage()` trên
+  một nhân vật không ảnh hưởng nhân vật khác.
+
+### 10.4 Đã kiểm chứng
+- Test với các giá trị lấy từ bytecode: `getSpriteNameIDByWeapon`, `getHorseSpriteNameIDByWeapon`
+  (gồm trường hợp 17/24), `getWeaponIcon`.
+- Test trên dữ liệu thật: nhân vật nam/nữ mặc định, đổi kiểu và màu tóc (ảnh dùng bảng màu), cầm vũ khí
+  (sprite 113 + mảnh 8001), ẩn bộ phận khi kiểu bằng 0.
+- Các ID sprite vũ khí có trong APK (113–124, 134, 136, 137, 144, 163, 165, 171–174) đúng bằng những
+  giá trị công thức sinh ra, và APK không có `sprite_117`.
+- Chạy trên Chromium: tóc, áo, mũ, vũ khí, áo choàng, nhân vật nữ, thú cưỡi 701/703/706, và cưỡi thú kèm
+  vũ khí (sprite 2513) đều hiển thị. Nhân vật trên bản đồ thử mặc đúng bộ đồ đã chọn.

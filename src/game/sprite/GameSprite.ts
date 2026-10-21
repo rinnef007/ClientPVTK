@@ -57,6 +57,17 @@ export function clearSpriteCache(): void {
   fragmentRegistry.clear();
 }
 
+/** GameSprite.getFragmentByName: like Java, hands out a clone (sharing the GameImage). */
+function getFragmentByName(s: number): FragmentFile | null {
+  const f = fragmentRegistry.get(s);
+  return f && f.gameImage != null ? FragmentFile.cloneFragmentFile(f) : null;
+}
+
+function registerFragment(f: FragmentFile | null): FragmentFile | null {
+  if (f && !fragmentRegistry.has(f.getNameID())) fragmentRegistry.set(f.getNameID(), FragmentFile.cloneFragmentFile(f)!);
+  return f;
+}
+
 export class GameSprite {
   cloakSprite: GameSprite | null = null;
   innerSprite: GameSprite | null = null;
@@ -162,7 +173,8 @@ export class GameSprite {
     return GameSprite.createSpriteFull(id, true, false, battle, -1);
   }
 
-  private static createSpriteFull(id: number, loadPng: boolean, hashData: boolean, battle: boolean, house: number): GameSprite | null {
+  /** The 5-argument Java createSprite(id, loadPng, hashData, battle, sex/house flag). */
+  static createSpriteFull(id: number, loadPng: boolean, hashData: boolean, battle: boolean, house: number): GameSprite | null {
     if (id <= 0) return null;
     try {
       const cached = spriteRegistry.get(id);
@@ -225,14 +237,12 @@ export class GameSprite {
     for (let i = 0; i < n; i++) {
       fileIds[i] = dis.readByte();
       const s = dis.readShort();
-      const known = fragmentRegistry.get(s) ?? null;
+      const known = getFragmentByName(s);
       if (known != null) {
         if (known.isNullImage() && loadPng) known.loadImage(PATH_ANI, s, null);
         this.fragmentFiles[i] = known;
       } else {
-        const f = FragmentFile.createFragmentFile(PATH_ANI, s, loadPng, null, null);
-        if (f) fragmentRegistry.set(s, f);
-        this.fragmentFiles[i] = f;
+        this.fragmentFiles[i] = registerFragment(FragmentFile.createFragmentFile(PATH_ANI, s, loadPng, null, null));
       }
     }
     return fileIds;
@@ -258,6 +268,14 @@ export class GameSprite {
       a.fromBytes(dis, this);
       this.animations.push(a);
     }
+  }
+
+  /** GameSprite.updateFragmentByPngName: reuse a loaded fragment or load it from assets. */
+  lookupFragment(dir: string, s: number, _battle: boolean): FragmentFile | null {
+    const f = getFragmentByName(s);
+    if (f == null) return registerFragment(FragmentFile.createFragmentFile(dir, s, true, null, null));
+    if (f.isNullImage()) f.loadImage(dir, s);
+    return f;
   }
 
   getFragmentFileByNameID(s: number): FragmentFile | null {
@@ -420,6 +438,11 @@ export function sprFragmentIds(data: Uint8Array): number[] {
     out.push(dis.readShort());
   }
   return out;
+}
+
+/** Builds sprites with loader code that discovers its file needs while running (see AssetFS.resolve). */
+export function resolveSprite<T>(build: () => T): Promise<T> {
+  return getAssetFS().resolve(build, clearSpriteCache);
 }
 
 export async function preloadSprite(id: number): Promise<void> {
