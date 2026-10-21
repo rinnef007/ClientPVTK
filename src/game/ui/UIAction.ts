@@ -103,6 +103,7 @@ const MENU: Record<number, [string, number?] | (() => void)> = {
   938: ['nearPlayer', 1], // team icon
   11203: ['mercenaryList', 2], // pets ("Pet"): bag pet items; mercenaries need the server
   946: ['petInfo'], // HUD pet portrait: the active pet's info
+  11281: ['worldMap'], // world map ("Map"): WorldMap.doEnterWorldMap
   11202: ['systemSet'], // system menu ("H.Thống")
   11256: ['setting'], // "Cài đặt": createSettingUI(myPlayer)
   11229: ['setting'],

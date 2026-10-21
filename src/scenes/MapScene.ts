@@ -8,6 +8,7 @@ import { Control } from '../game/main/Control';
 import * as GameStore from '../game/main/GameStore';
 import * as GameWorld from '../game/main/GameWorld';
 import { MAP_MODEL_IMAGES } from '../game/main/MapModels';
+import { WORLD_MAP_FILES, WorldMap } from '../game/main/WorldMap';
 import * as WorldPanel from '../game/main/WorldPanel';
 import { GameMap, TAG_FORCE_PAINT, TAG_MAP_IMG_OFF } from '../game/map/GameMap';
 import { TEST_MAP_SPRITES, buildTestMap } from '../game/map/TestMap';
@@ -98,7 +99,7 @@ export class MapScene implements Scene {
   private async loadHud(): Promise<WorldHud | null> {
     const fs = getAssetFS();
     await preloadUI(UI_WORLD_PANEL, TYPE_ALERT);
-    await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET_HEAD), ...MAP_MODEL_IMAGES]);
+    await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET_HEAD), ...MAP_MODEL_IMAGES, ...WORLD_MAP_FILES]);
     await Promise.all([SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
     initUIEnvironment();
     return WorldHud.create();
@@ -205,6 +206,8 @@ export class MapScene implements Scene {
       clearChatHistory();
       WorldMessage.initWorldShowLocation((ev) => hud.get(ev), true);
       WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
+      // Leaving the world map (stage 60) returns to the world stage with the HUD's chat area.
+      WorldMap.onExit = () => WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
       WorldMessage.addNoticeMsg('Chào mừng đến bản đồ thử (offline). Mọi số liệu và tin nhắn ở đây đều là dữ liệu giả.');
       WorldMessage.addPointMsg('Nhiệm vụ: nói chuyện với NPC có dấu ! (xem chấm nhấp nháy trên bản đồ nhỏ).');
     }
@@ -218,6 +221,14 @@ export class MapScene implements Scene {
   }
 
   update(input: InputState): void {
+    // Stage 60 (world map): the map and its dialogs take the input; the world does not run.
+    if (WorldMap.isActive()) {
+      uiClock.tick++;
+      WorldMessage.logic();
+      if (UIHandler.hasUI()) UIHandler.logic(input.key, input.pointers);
+      else WorldMap.logic(input.key, input.pointers);
+      return;
+    }
     // UIHandler.logic: an open screen takes the keys and taps; the world keeps running behind it.
     const uiOpen = UIHandler.hasUI();
     if (uiOpen) UIHandler.logic(input.key, input.pointers);
@@ -292,6 +303,7 @@ export class MapScene implements Scene {
   }
 
   private leave(): void {
+    WorldMap.clean();
     GameWorld.setMyPlayer(null);
     GameWorld.setNpcList([]);
     GameWorld.missionRadar.mapId = -1;
@@ -310,6 +322,15 @@ export class MapScene implements Scene {
     if (!map || !me) {
       g.setColor(COLOR_TEXT);
       g.drawString(this.status, 8, 8, LEFT | TOP);
+      return;
+    }
+    if (WorldMap.isActive()) {
+      g.setFontSize(FONT_MEDIUM);
+      WorldMap.paint(g);
+      g.setClip(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+      WorldMessage.paintBottomUIMsg(g);
+      UIHandler.drawAll(g);
+      WorldMessage.paintUpUIMsg(g);
       return;
     }
     const hud = this.showHud ? this.hud : null;
