@@ -89,3 +89,21 @@ export function rand(min: number, max: number): number {
 export function isNullText(s: string | null | undefined): boolean {
   return s == null || s.trim() === '';
 }
+
+/** Tool.rectIn: point (px, py) inside the rectangle, edges inclusive. */
+export function rectIn(x: number, y: number, w: number, h: number, px: number, py: number): boolean {
+  return x <= px && y <= py && x + w >= px && y + h >= py;
+}
+
+/** Tool.rectGetIntersection: [x, y, w, h], or a zero-size box when the rectangles do not overlap. */
+export function rectGetIntersection(x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number): [number, number, number, number] {
+  const x = Math.max(x1, x2);
+  const y = Math.max(y1, y2);
+  let w = Math.min(x1 + w1, x2 + w2) - x;
+  let h = Math.min(y1 + h1, y2 + h2) - y;
+  if (w < 0 || h < 0) {
+    w = 0;
+    h = 0;
+  }
+  return [x, y, w, h];
+}

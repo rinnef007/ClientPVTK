@@ -10,7 +10,7 @@ import type { ImageSet } from '../image/ImageSet';
 import type { GameSprite } from '../sprite/GameSprite';
 import { PixelFont, PixelString } from '../string/PixelFont';
 import { PowerString } from '../string/PowerString';
-import { isNullText } from '../common/Tool';
+import { isColliding, isNullText, rectGetIntersection, rectIn } from '../common/Tool';
 
 const MAX = 2147483647;
 
@@ -26,6 +26,14 @@ export const SETTING_IS_OUTVIEW = 2;
 export const SETTING_IS_SCALE = 4;
 export const SETTING_IS_SHOW = 8;
 export const SETTING_NO_NEED_LAYOUT = 16;
+export const SETTING_PRESS = 32;
+export const SETTING_DRAG = 64;
+export const SETTING_ENABLE_FOCUS = 128;
+export const SETTING_KEY_UP = 256;
+export const SETTING_KEY_DOWN = 512;
+export const SETTING_KEY_LEFT = 1024;
+export const SETTING_KEY_RIGHT = 2048;
+export const SETTING_REPEAT = 4096;
 
 /** Text metrics provider (GLabel uses Font.getHeight/stringWidth). */
 export const uiFont = {
@@ -92,6 +100,36 @@ export class GWidget {
   }
   isFocus(): boolean {
     return this.isGWidgetSetting(SETTING_IS_FOCUS);
+  }
+  setFocus(v: boolean): void {
+    this.setGWidgetSetting(SETTING_IS_FOCUS, v);
+  }
+  /** Bit 128: can take the focus (keys move it, taps select it). */
+  isEnableFocus(): boolean {
+    return this.isGWidgetSetting(SETTING_ENABLE_FOCUS);
+  }
+
+  /** True when some ancestor is scrolled, so the widget may stick out of its viewport. */
+  parentNeedScroll(): boolean {
+    for (let p = this.parent; p != null; p = p.parent) if (p.needScrollBar) return true;
+    return false;
+  }
+
+  /** Visible part of the widget: its box cut by every ancestor's inner box (text areas excepted). */
+  getIntersect(): [number, number, number, number] {
+    const vm = this.vm;
+    const p = this.parent;
+    if (p == null || p.getType() === 52) return [vm[VM.XX] + vm[VM.OFFSET_X], vm[VM.YY] + vm[VM.OFFSET_Y], vm[VM.W], vm[VM.H]];
+    const r = p.getIntersect();
+    const pv = p.vm;
+    return rectGetIntersection(vm[VM.XX] + vm[VM.OFFSET_X], vm[VM.YY] + vm[VM.OFFSET_Y], vm[VM.W], vm[VM.H],
+      r[0] + pv[VM.BORDER_LEFT], r[1] + pv[VM.BORDER_TOP], r[2] - pv[VM.BORDER_LEFT] - pv[VM.BORDER_RIGHT], r[3] - pv[VM.BORDER_TOP] - pv[VM.BORDER_BOTTOM]);
+  }
+
+  /** The clip every widget paint starts with. */
+  protected setPaintClip(g: Graphics): void {
+    if (this.parentNeedScroll()) g.setClip(...this.getIntersect());
+    else g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
   }
   SetNeedLayout(need: boolean): void {
     this.setGWidgetSetting(SETTING_NO_NEED_LAYOUT, !need);
@@ -310,6 +348,193 @@ export class GContainer extends GWidget {
     if (sb == null) return;
     const x = sb.align === 1 ? ((this.vm[VM.W] - sb.getMinW()) / 2) | 0 : sb.align === 2 ? this.vm[VM.W] - sb.getMinW() : 0;
     sb.setBounds(x, 0, sb.getMinW(), this.vm[VM.H]);
+  }
+
+  // --- input (GContainer key / pointer handling) ---
+  /** Receives arrow keys when the matching SETTING_KEY_* bit is also set. */
+  canCatchKey = false;
+  isCatchHotKey = false;
+
+  setCatchKey(v: boolean): void {
+    this.canCatchKey = v;
+  }
+
+  getIndex(w: GWidget | null): number {
+    return w == null ? -1 : this.children.indexOf(w);
+  }
+
+  getJavaChild(i: number): GWidget | null {
+    return i >= 0 && i < this.children.length ? this.children[i] : null;
+  }
+
+  /** Depth-first: the first shown container that takes this key direction (or hot keys). */
+  getCatchKeyContainer(hotKey: boolean, bit: number): GContainer | null {
+    const takes = (c: GContainer) => (hotKey ? c.isCatchHotKey : c.canCatchKey && c.isGWidgetSetting(bit));
+    if (takes(this)) return this;
+    for (const c of this.children) {
+      if (!(c instanceof GContainer) || !c.isShow()) continue;
+      if (takes(c)) return c;
+      const r = c.getCatchKeyContainer(hotKey, bit);
+      if (r != null) return r;
+    }
+    return null;
+  }
+
+  getLayoutGColumn(): number {
+    const d = this.layoutData;
+    if (d[0] === LAYOUT_GRID2) return ((this.vm[VM.W] - this.vm[VM.BORDER_LEFT] - this.vm[VM.BORDER_RIGHT] + d[1]) / (d[4] + d[1])) | 0;
+    return d[5];
+  }
+
+  keyPressUp(): void {}
+  keyPressDown(): void {}
+  keyPressLeft(): void {}
+  keyPressRight(): void {}
+  hotKeyPress(_key: number): void {}
+  moveUpPage(): void {}
+  moveDownPage(): void {}
+
+  /** Scrolls the content up by one child (shows the next one below). */
+  moveUp(): void {
+    const last = this.lastInViewIndex;
+    if (last <= -1 || last + 1 >= this.children.length) return;
+    const a = this.children[last];
+    const b = this.children[last + 1];
+    let d = a.vm[VM.Y] - b.vm[VM.Y];
+    if (last + 1 === this.children.length - 1) d -= b.getH();
+    this.setChildrenOffset(0, d);
+  }
+
+  /** Scrolls the content down by one child (shows the previous one above). */
+  moveDown(): void {
+    const first = this.firstInViewIndex;
+    if (first <= 0) return;
+    const a = this.children[first - 1];
+    const b = this.children[first];
+    let d = b.vm[VM.Y] - a.vm[VM.Y];
+    if (first - 1 === 0) d += b.getH();
+    this.setChildrenOffset(0, d);
+  }
+
+  /** Moves every child by (dx, dy) (dy clamped by the scroll bar range) and recomputes the in-view range. */
+  setChildrenOffset(dx: number, dy: number): void {
+    this.firstInViewIndex = -1;
+    this.lastInViewIndex = -1;
+    let d = dy;
+    const sb = this.gsb;
+    if (sb != null) {
+      if (sb.scrollPos - dy > sb.maxScrollDis) {
+        d = sb.scrollPos - sb.maxScrollDis;
+        sb.scrollPos = sb.maxScrollDis;
+      } else {
+        const old = sb.scrollPos;
+        sb.scrollPos -= dy;
+        if (sb.scrollPos < 0) {
+          sb.scrollPos = 0;
+          d = old;
+        }
+      }
+    }
+    const vm = this.vm;
+    const n = this.children.length;
+    this.children.forEach((c, i) => {
+      c.setPos(c.vm[VM.X] + dx, c.vm[VM.Y] + d);
+      const inView = isColliding(vm[VM.BORDER_LEFT], vm[VM.BORDER_TOP], vm[VM.W] - vm[VM.BORDER_LEFT] - vm[VM.BORDER_RIGHT],
+        vm[VM.H] - vm[VM.BORDER_TOP] - vm[VM.BORDER_BOTTOM], c.vm[VM.X], c.vm[VM.Y], c.vm[VM.W], c.vm[VM.H]);
+      c.setOutView(!inView);
+      if (inView) {
+        if (this.firstInViewIndex === -1) this.firstInViewIndex = i;
+        if (i === n - 1 && this.lastInViewIndex === -1) this.lastInViewIndex = i;
+      } else if (this.lastInViewIndex === -1 && this.firstInViewIndex !== -1) {
+        this.lastInViewIndex = i - 1;
+      }
+    });
+    this.setAbs();
+  }
+
+  /** Scrolls so that `to` (newly focused, previously `from`) is fully visible. */
+  setSrollBar(from: GWidget | null, to: GWidget | null): void {
+    if (from === to || to == null) return;
+    const top = this.vm[VM.BORDER_TOP];
+    let bot = this.vm[VM.H] - this.vm[VM.BORDER_BOTTOM];
+    const ty = to.vm[VM.Y];
+    const th = to.vm[VM.H];
+    const partial = (ty < top && ty + th > top) || (ty < bot && ty + th > bot);
+    if (!to.isOutView() && !partial) return;
+    const first = this.children[this.firstInViewIndex];
+    const last = this.children[this.lastInViewIndex];
+    if (first == null || last == null) return; // Java throws here (elementAt(-1))
+    let d: number;
+    if (this.children[0] === to) {
+      d = this.gsb != null ? this.gsb.scrollPos : 0;
+    } else if (to === this.children[this.children.length - 1]) {
+      bot = Math.min(last.vm[VM.Y] + last.vm[VM.H], bot);
+      d = bot - (ty + th);
+    } else if (from != null && ty < from.vm[VM.Y]) {
+      if (from.isOutView()) d = first.vm[VM.Y] + first.vm[VM.H] - ty;
+      else if (partial) d = top - ty;
+      else d = Math.max(first.vm[VM.Y], top) - ty;
+    } else if (from != null && from.isOutView()) {
+      d = ty <= from.vm[VM.Y] ? 0 : first.vm[VM.Y] - from.vm[VM.Y];
+    } else if (partial) {
+      d = bot - (ty + th);
+    } else {
+      bot = Math.min(last.vm[VM.Y] + last.vm[VM.H], bot);
+      d = bot - (ty + th);
+    }
+    this.setChildrenOffset(0, d);
+  }
+
+  /** Drag scrolling (only when there is a scroll bar to track it). */
+  pointerDrag(dx: number, dy: number): void {
+    if (this.needScrollBar && this.gsb != null) this.setChildrenOffset(dx, dy);
+  }
+
+  isPointAtScrollBar(bit: number, x: number, y: number): boolean {
+    const sb = this.gsb;
+    if (!this.needScrollBar || sb == null || !sb.isGWidgetSetting(bit)) return false;
+    return rectIn(sb.vm[VM.XX] + sb.vm[VM.OFFSET_X], sb.vm[VM.YY], sb.vm[VM.W], sb.vm[VM.H], x, y);
+  }
+
+  private inRect(x: number, y: number): boolean {
+    return rectIn(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H], x, y);
+  }
+
+  /** The focusable widget under a tap (bit 32) or a held press (bit 4096); children before the container. */
+  searchPressGWidget(x: number, y: number, bit = SETTING_PRESS): GWidget | null {
+    if (!this.isShow() || this.isOutView()) return null;
+    if (this.isPointAtScrollBar(bit, x, y)) return this.gsb;
+    for (const c of this.children) {
+      if (c instanceof GContainer) {
+        const r = c.searchPressGWidget(x, y, bit);
+        if (r != null) return r;
+      } else if (c.isEnableFocus() && c.isGWidgetSetting(bit) && c.isShow() && !c.isOutView()
+        && rectIn(c.vm[VM.XX], c.vm[VM.YY], c.vm[VM.W], c.vm[VM.H], x, y)) {
+        return c;
+      }
+    }
+    return this.isEnableFocus() && this.isGWidgetSetting(bit) && this.inRect(x, y) ? this : null;
+  }
+
+  searchRepeatedGWidget(x: number, y: number): GWidget | null {
+    return this.searchPressGWidget(x, y, SETTING_REPEAT);
+  }
+
+  /** What a press-and-drag at (x, y) grabs: a scroll bar, or the outermost draggable container. */
+  searchDragGWidget(x: number, y: number): GWidget | null {
+    if (!this.isShow() || this.isOutView()) return null;
+    if (this.isPointAtScrollBar(SETTING_DRAG, x, y)) return this.gsb;
+    if (this.isGWidgetSetting(SETTING_DRAG) && this.inRect(x, y)) return this;
+    for (const c of this.children) {
+      if (c instanceof GContainer) {
+        const r = c.searchDragGWidget(x, y);
+        if (r != null) return r;
+      } else if (c.isGWidgetSetting(SETTING_DRAG) && c.isShow() && !c.isOutView()
+        && rectIn(c.vm[VM.XX], c.vm[VM.YY], c.vm[VM.W], c.vm[VM.H], x, y)) {
+        return c;
+      }
+    }
+    return null;
   }
 
   /** First child with the given event type (UIHandler uses 997 for a text area's page label). */
@@ -584,7 +809,7 @@ export class GLinePanel extends GContainer {
 
   /** GLinePanel.paint: frame box at the offset-adjusted absolute position, then children. */
   paint(g: Graphics): void {
-    g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
+    this.setPaintClip(g);
     const focus = this.isFocus();
     const table = focus ? this.focusColorTable : this.colorTable;
     if (table != null) {
@@ -641,6 +866,100 @@ export class GTextArea extends GLinePanel {
     this.setType(52);
     this.lineHeight = uiFont.height;
     if (this.lineHeight > this.getMinH()) this.setMinHeight(this.lineHeight);
+    this.setCatchKey(true);
+  }
+
+  // Keys: up/down scroll by a line, left/right turn pages (wrapping).
+  keyPressUp(): void {
+    this.moveDown();
+  }
+  keyPressDown(): void {
+    this.moveUp();
+  }
+  keyPressLeft(): void {
+    this.moveUpPage();
+  }
+  keyPressRight(): void {
+    this.moveDownPage();
+  }
+
+  getOffsetY(): number {
+    return this.offsetY;
+  }
+
+  private syncScrollBar(): void {
+    if (this.gsb != null) this.gsb.scrollPos = -this.offsetY | 0;
+  }
+
+  /** Shows the previous line. */
+  moveDown(): void {
+    this.updateOffsetY(this.realLineHeight(), true);
+    this.syncScrollBar();
+  }
+
+  /** Shows the next line. */
+  moveUp(): void {
+    this.updateOffsetY(this.realLineHeight(), false);
+    this.syncScrollBar();
+  }
+
+  moveDownPage(): void {
+    if (++this.curPage >= this.totalPage) this.curPage = 0;
+    this.offsetY = -this.getPageOffsetHeight() | 0;
+    this.syncScrollBar();
+    this.updatePageText();
+  }
+
+  moveUpPage(): void {
+    if (--this.curPage < 0) this.curPage = this.totalPage - 1;
+    this.offsetY = -this.getPageOffsetHeight() | 0;
+    this.syncScrollBar();
+    this.updatePageText();
+  }
+
+  private getPageOffsetHeight(): number {
+    let h = 0;
+    for (let i = 0; i < this.curPage && i < this.piePageHeight.length; i++) h += this.piePageHeight[i];
+    return h;
+  }
+
+  /** Snaps the scroll position to the previous (`up`) or next line boundary. */
+  private updateOffsetY(min: number, up: boolean): void {
+    if (this.messages == null) return;
+    const pos = -this.offsetY;
+    let next = pos;
+    let acc = 0;
+    for (let i = 0; i < this.messages.length; i++) {
+      const h = this.textHeight(i, min);
+      acc += h;
+      const diff = acc - pos;
+      if (diff > 0) {
+        if (up) next = Math.max(diff === h ? pos - this.textHeight(i - 1, min) : pos - (h - diff), 0);
+        else next = Math.min(pos + diff, this.numTotalOffsetHeight);
+        break;
+      }
+    }
+    this.offsetY = -next | 0;
+  }
+
+  /** Drag scrolling, clamped by the scroll bar; partial rows are shown while dragging. */
+  pointerDrag(_dx: number, dy: number): void {
+    const sb = this.gsb;
+    if (!this.needScrollBar || sb == null) return;
+    this.isPartRowShow = true;
+    let d = dy;
+    if (sb.scrollPos - dy <= sb.maxScrollDis) {
+      const old = sb.scrollPos;
+      sb.scrollPos -= dy;
+      if (sb.scrollPos < 0) {
+        sb.scrollPos = 0;
+        d = old;
+      }
+    } else {
+      d = sb.scrollPos - sb.maxScrollDis;
+      sb.scrollPos = sb.maxScrollDis;
+    }
+    this.offsetY += d;
   }
 
   /** DATA_TEXTAREA. */
@@ -845,12 +1164,132 @@ export class GTextArea extends GLinePanel {
   }
 }
 
+/** Utilities.getHotKeyValue: keypad key → hot key slot (-1 for other keys). */
+export function getHotKeyValue(key: number): number {
+  return { 49: 0, 51: 1, 55: 2, 57: 3, 42: 4, 48: 5, 35: 6 }[key] ?? -1;
+}
+
 export class GWindow extends GLinePanel {
   fullScreen = false;
+  focusIndex = 0;
+  oldFocusIndex = 0;
+  focusWidget: GWidget | null = null;
+  /** 1 = focus reached the first item of its row/column, 2 = the last. */
+  moveFlag = 0;
+  hotKeyTable: number[] | null = null;
 
   constructor(vm: Int32Array) {
     super(vm);
     this.setType(53);
+    this.setCatchKey(true);
+  }
+
+  private canFocus(w: GWidget | null | undefined): w is GWidget {
+    return w != null && w.isEnableFocus() && w.isShow();
+  }
+
+  /** Focus the next focusable item after index `from` in `list`, wrapping around. */
+  private keyNext(list: GWidget[], from: number): void {
+    const n = list.length;
+    for (let i = 1; i <= n - 1; i++) {
+      const w = list[(from + i) % n];
+      if (this.canFocus(w)) return this.setFocus(w);
+    }
+  }
+
+  private keyPrev(list: GWidget[], from: number): void {
+    const n = list.length;
+    if (n === 1) {
+      if (this.canFocus(list[0])) this.setFocus(list[0]);
+      return;
+    }
+    for (let i = 1; i <= n - 1; i++) {
+      const w = list[(((from - i + n) % n) + n) % n];
+      if (this.canFocus(w)) return this.setFocus(w);
+    }
+  }
+
+  /** Grid layouts: move within the focused item's column (vertical) or row. */
+  private doGridMove(vertical: boolean, next: boolean): void {
+    if (this.focusIndex < 0) return;
+    this.moveFlag = 0;
+    const cols = this.getLayoutGColumn();
+    const f = this.focusIndex;
+    const line: GWidget[] = [];
+    let at = 0;
+    this.children.forEach((c, i) => {
+      if (vertical ? i % cols === f % cols : ((i / cols) | 0) === ((f / cols) | 0)) {
+        if (i === f) at = line.length;
+        line.push(c);
+      }
+    });
+    if (next) this.keyNext(line, at);
+    else this.keyPrev(line, at);
+    if (this.focusWidget != null) {
+      if (this.focusWidget === line[0]) this.moveFlag = 1;
+      else if (this.focusWidget === line[line.length - 1]) this.moveFlag = 2;
+    }
+  }
+
+  private isGrid(): boolean {
+    return this.layoutData[0] === LAYOUT_GRID || this.layoutData[0] === LAYOUT_GRID2;
+  }
+
+  keyPressUp(): void {
+    if (!this.canCatchKey || !this.isGWidgetSetting(SETTING_KEY_UP)) return;
+    if (this.isGrid()) this.doGridMove(true, false);
+    else this.keyPrev(this.children, this.focusIndex);
+  }
+
+  keyPressDown(): void {
+    if (!this.canCatchKey || !this.isGWidgetSetting(SETTING_KEY_DOWN)) return;
+    if (this.isGrid()) this.doGridMove(true, true);
+    else this.keyNext(this.children, this.focusIndex);
+  }
+
+  keyPressLeft(): void {
+    if (!this.canCatchKey || !this.isGWidgetSetting(SETTING_KEY_LEFT)) return;
+    if (this.isGrid()) this.doGridMove(false, false);
+    else this.keyPrev(this.children, this.focusIndex);
+  }
+
+  keyPressRight(): void {
+    if (!this.canCatchKey || !this.isGWidgetSetting(SETTING_KEY_RIGHT)) return;
+    if (this.isGrid()) this.doGridMove(false, true);
+    else this.keyNext(this.children, this.focusIndex);
+  }
+
+  /** Focus the i-th focusable child. */
+  setFocusIndex(i: number): void {
+    const list = this.children.filter((c) => this.canFocus(c));
+    if (i >= 0 && i < list.length) {
+      this.setFocus(list[i]);
+      this.oldFocusIndex = this.focusIndex;
+    }
+  }
+
+  setFirstFocus(): void {
+    this.setFocusIndex(0);
+  }
+
+  setFocus(w: GWidget | boolean | null): void {
+    if (typeof w === 'boolean') return super.setFocus(w);
+    const old = this.focusWidget;
+    this.focusWidget = w;
+    this.oldFocusIndex = this.focusIndex;
+    this.focusIndex = this.getIndex(w);
+    if (old != null && w != null && w.parent != null && this.gsb != null && this.gsb.maxScrollDis > 0) {
+      w.parent.setSrollBar(old, w);
+    }
+    old?.setFocus(false);
+    w?.setFocus(true);
+  }
+
+  /** Hot keys (1 3 7 9 * 0 #) focus the child whose hotKeyTable entry matches the key's slot. */
+  hotKeyPress(key: number): void {
+    if (this.hotKeyTable == null) return;
+    const i = this.hotKeyTable.indexOf(getHotKeyValue(key));
+    if (i >= 0) this.setFocus(this.getJavaChild(i));
   }
 }
 
@@ -994,7 +1433,7 @@ export class GLabel extends GWidget {
   }
 
   paint(g: Graphics): void {
-    g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
+    this.setPaintClip(g);
     const focus = this.isFocus();
     const table = focus ? this.focusColorTable : this.colorTable;
     if (table != null) {
@@ -1204,7 +1643,7 @@ export class GGameBar extends GWidget {
   }
 
   paint(g: Graphics): void {
-    g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
+    this.setPaintClip(g);
     const x = this.vm[VM.XX] + this.vm[VM.OFFSET_X];
     const y = this.vm[VM.YY] + this.vm[VM.OFFSET_Y];
     const w = this.vm[VM.W];
@@ -1309,6 +1748,8 @@ export class GImageNumer extends GWidget {
 
   paint(g: Graphics): void {
     const set = this.numerResName;
+    const scrolled = this.parentNeedScroll();
+    if (scrolled) this.setPaintClip(g);
     if (set != null && this.numberString != null) {
       const start = this.iNumber >= 0 ? this.plusStartIndex : this.subStartIndex;
       const vm = this.vm;
@@ -1326,7 +1767,8 @@ export class GImageNumer extends GWidget {
       } else if (a & 32) {
         y = y0 + (h - (((h - nh) / 2) | 0));
       }
-      g.setClip(x0, y0, w, h);
+      if (scrolled) g.clipRect(x0, y0, w, h);
+      else g.setClip(x0, y0, w, h);
       drawImageNumber(g, set, start, this.numberString, x, y, this.space, a);
     }
     g.setClip(0, 0, uiScreen.width, uiScreen.height);
@@ -1387,7 +1829,7 @@ export class GGameIcon extends GWidget {
   }
 
   paint(g: Graphics): void {
-    g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
+    this.setPaintClip(g);
     if (this.colorTable != null) {
       drawFrameBox(g, this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H], this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
     }
@@ -1429,6 +1871,14 @@ export class GScrollBar extends GWidget {
 
   getBarWidth(): number {
     return this.getMinW();
+  }
+
+  getTotalDis(): number {
+    return this.maxScrollDis + this.showDis;
+  }
+
+  isRectInTop(x: number, y: number): boolean {
+    return rectIn(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], (this.vm[VM.H] / 2) | 0, x, y);
   }
 
   reset(): void {

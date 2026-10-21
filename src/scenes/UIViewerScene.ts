@@ -1,9 +1,21 @@
 import { LEFT, TOP } from '../midp/anchor';
 import { FONT_SMALL, FONT_MEDIUM, type Graphics } from '../midp/Graphics';
-import { KEY_DOWN, KEY_FIRE, KEY_LEFT, KEY_RIGHT, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_UP, type InputState } from '../midp/Input';
+import { KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
 import { getAssetFS } from '../game/common/Utilities';
 import { imageSetFiles } from '../game/main/GameView';
-import { uiClock, uiFont, uiScreen, type GWidget } from '../game/gui/GWidget';
+import {
+  GContainer,
+  GWindow,
+  SETTING_KEY_DOWN,
+  SETTING_KEY_LEFT,
+  SETTING_KEY_RIGHT,
+  SETTING_KEY_UP,
+  uiClock,
+  uiFont,
+  uiScreen,
+  type GWidget,
+} from '../game/gui/GWidget';
+import { UIInput } from '../game/ui/UIInput';
 import { buildAndShow, collectSpriteIds, uiContext } from '../game/ui/UIBuilder';
 import { preloadSprite, resolveSprite } from '../game/sprite/GameSprite';
 import { createSpriteByIcon, encodeIcons } from '../game/sprite/SpriteIcon';
@@ -15,7 +27,12 @@ import { MenuScene } from './MenuScene';
 import { COLOR_DIM, COLOR_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
 import { softKeyAt } from './ui';
 
-/** Browses the game's 165 .ui layouts (preliminary rendering, see UIPreview). */
+const INFO_H = 34;
+
+/**
+ * Browses the game's 165 .ui layouts. Arrow keys, Enter and taps drive the layout like
+ * UIHandler's generic input (focus, scrolling); "-"/"=" or a tap on the caption bar switch files.
+ */
 export class UIViewerScene implements Scene {
   private readonly ids: number[];
   private idx = 0;
@@ -24,6 +41,8 @@ export class UIViewerScene implements Scene {
   private status = '';
   private showInfo = true;
   private token = 0;
+  private input: UIInput | null = null;
+  private lastAction = '';
 
   constructor(private readonly ctx: Context) {
     this.ids = (ctx.manifest?.dirs['ui'] ?? [])
@@ -63,10 +82,32 @@ export class UIViewerScene implements Scene {
       if (token !== this.token) return;
       this.file = f;
       this.root = buildAndShow(f);
+      this.input = this.root instanceof GContainer ? this.makeInput(this.root) : null;
+      this.lastAction = '';
       this.status = '';
     } catch (e) {
       this.status = `Lỗi đọc: ${(e as Error).message}`;
     }
+  }
+
+  private makeInput(root: GContainer): UIInput {
+    const input = new UIInput(root);
+    input.onAction = (w) => {
+      this.lastAction = w == null ? 'chọn: (không có)' : `chọn: sự kiện ${w.getEventType()} (loại ${w.getType()})`;
+    };
+    input.onClose = () => {
+      this.lastAction = 'đóng (soft phải / nút đóng)';
+    };
+    // Screens pick their first focus in UIHandler; the viewer focuses the first window that
+    // takes arrow keys so the focus colours are visible straight away.
+    for (const bit of [SETTING_KEY_DOWN, SETTING_KEY_RIGHT, SETTING_KEY_UP, SETTING_KEY_LEFT]) {
+      const c = root.getCatchKeyContainer(false, bit);
+      if (c instanceof GWindow) {
+        c.setFirstFocus();
+        break;
+      }
+    }
+    return input;
   }
 
   private step(d: number): void {
@@ -79,25 +120,31 @@ export class UIViewerScene implements Scene {
   update(input: InputState): void {
     uiClock.tick++;
     switch (input.key) {
-      case KEY_LEFT:
-      case KEY_UP:
+      case 0:
+        break;
+      case KEY_STAR:
         this.step(-1);
         break;
-      case KEY_RIGHT:
-      case KEY_DOWN:
+      case KEY_POUND:
         this.step(1);
         break;
-      case KEY_FIRE:
       case KEY_SOFT_LEFT:
         this.showInfo = !this.showInfo;
         break;
       case KEY_SOFT_RIGHT:
         return this.ctx.go(new MenuScene(this.ctx));
+      default:
+        this.input?.handleKey(input.key);
     }
     for (const p of input.pointers) {
-      if (p.type !== 'down') continue;
-      if (softKeyAt(p.x, p.y) === KEY_SOFT_RIGHT) return this.ctx.go(new MenuScene(this.ctx));
-      this.step(p.x < SCREEN_WIDTH / 2 ? -1 : 1);
+      if (p.type === 'down' && softKeyAt(p.x, p.y) === KEY_SOFT_RIGHT && !this.showInfo) return this.ctx.go(new MenuScene(this.ctx));
+      if (this.showInfo && p.y >= SCREEN_HEIGHT - INFO_H) {
+        if (p.type === 'down') this.step(p.x < SCREEN_WIDTH / 2 ? -1 : 1);
+        continue;
+      }
+      if (p.type === 'down') this.input?.pointerPressed(p.x, p.y);
+      else if (p.type === 'move') this.input?.pointerDragged(p.x, p.y);
+      else this.input?.pointerReleased(p.x, p.y);
     }
   }
 
@@ -113,12 +160,12 @@ export class UIViewerScene implements Scene {
     if (!this.showInfo) return;
     g.setFontSize(FONT_SMALL);
     g.setColor(0xc0000000);
-    g.fillRect(0, SCREEN_HEIGHT - 34, SCREEN_WIDTH, 34);
+    g.fillRect(0, SCREEN_HEIGHT - INFO_H, SCREEN_WIDTH, INFO_H);
     g.setColor(COLOR_TITLE);
     const id = this.ids[this.idx];
     const lib = this.file?.lib.length ?? 0;
-    g.drawString(`ui/${id}.ui  (${this.idx + 1}/${this.ids.length})  thư viện: ${lib}  ${this.status}`, 4, SCREEN_HEIGHT - 32, LEFT | TOP);
+    g.drawString(`ui/${id}.ui  (${this.idx + 1}/${this.ids.length})  thư viện: ${lib}  ${this.status || this.lastAction}`, 4, SCREEN_HEIGHT - 32, LEFT | TOP);
     g.setColor(COLOR_DIM);
-    g.drawString('←/→ đổi · Enter ẩn chú thích · Esc thoát · GLabel: font hệ thống · GPixelLabel: font .t', 4, SCREEN_HEIGHT - 17, LEFT | TOP);
+    g.drawString('-/= hoặc chạm đây: đổi file · mũi tên/Enter/chạm: thao tác · Q ẩn · Esc thoát', 4, SCREEN_HEIGHT - 17, LEFT | TOP);
   }
 }

@@ -292,6 +292,7 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
 - `GScrollBar` chỉ hiện khi nội dung tràn (như Java); phần lớn danh sách được UIHandler điền lúc chạy nên trong trình xem thường chưa thấy thanh cuộn.
 - Chữ chạy ngang của `GLabel` (marquee, bit 2/8/16) đã port. Theo đúng Java, chỉ chạy khi chữ dài hơn ô **lúc `setText`/`setBounds`**. Trong file `.ui`, kích thước thường được đặt trước chữ nên các nhãn dịch sang tiếng Việt bị dài hơn vẫn bị cắt cho đến khi UIHandler gọi `setText` lúc chạy (chưa port).
 - Icon đứng trước chữ (`iconValue`: VIP, tiền, GM…) chỉ được UIHandler đặt lúc chạy; chưa port.
-- Focus, phím, chạm, cuộn và hành vi riêng của từng màn (`UIHandler`, `UIAction`: 45k + 12k dòng) chưa port. Hiện chỉ **hiển thị**, chưa tương tác.
+- **Tương tác chung (đã port):** focus của `GWindow` (phím mũi tên theo bit 256/512/1024/2048, đi vòng, di chuyển theo hàng/cột với layout lưới, phím tắt 1 3 7 9 * 0 #), tự cuộn tới ô được chọn (`setSrollBar`), cuộn danh sách/ô chữ bằng phím, kéo và chạm thanh cuộn, chạm để chọn widget (bit 32), cắt vùng vẽ khi cha đang cuộn (`getIntersect`). Phần điều phối nằm trong `game/ui/UIInput.ts` (phần chung của `UIHandler.handleKey`/`handlerMouse*`).
+- **Chưa port:** hành vi riêng từng màn (`UIHandler`, `UIAction`: 45k + 12k dòng); trình xem chỉ báo "sự kiện N" khi bấm. Lặp phím/chạm giữ, đóng khi chạm ra ngoài (cờ 16), các ngoại lệ riêng trong `handlerMouseReleased`. Màn thật tự chọn ô focus đầu tiên; trình xem tạm focus cửa sổ đầu tiên nhận phím.
 - Font hệ thống: dùng Roboto/Arial để gần với Android, nhưng độ rộng chữ vẫn có thể lệch vài pixel.
 - `GameView.initImage` (các bộ ảnh đặc biệt như tiền, icon VIP) chưa port; mọi id đều nạp từ `common/<id>`.
