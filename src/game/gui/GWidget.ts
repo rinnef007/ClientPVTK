@@ -6,6 +6,7 @@
 import type { Graphics } from '../../midp/Graphics';
 import { BOTTOM, HCENTER, RIGHT, TOP, VCENTER } from '../../midp/anchor';
 import { drawBorderString, drawFrameBox, getImageSet } from '../main/GameView';
+import { PixelFont, PixelString } from '../string/PixelFont';
 
 const MAX = 2147483647;
 
@@ -624,10 +625,18 @@ export class GLabel extends GWidget {
     this.resetSize();
   }
 
+  protected getBaseFontHeight(): number {
+    return uiFont.height;
+  }
+
+  protected getStringWidth(): number {
+    return this.label == null ? 0 : uiFont.stringWidth(this.label);
+  }
+
   /** Minimum size grows to fit the text (drives H/V layouts). */
   resetSize(): void {
-    const fh = uiFont.height;
-    this.strWidth = this.label == null ? 0 : uiFont.stringWidth(this.label);
+    const fh = this.getBaseFontHeight();
+    this.strWidth = this.getStringWidth();
     if (fh > this.getMinH()) this.setMinHeight(fh);
     if (this.strWidth > this.getMinW()) this.setMinWidth(this.strWidth);
     if (this.getMinW() > this.getMaxW()) this.setMinWidth(this.getMaxW());
@@ -662,11 +671,23 @@ export class GLabel extends GWidget {
     const w = this.vm[VM.W];
     const h = this.vm[VM.H];
     const tx = a & HCENTER ? x + (w >> 1) : a & RIGHT ? x + w : x;
-    const ty = a & VCENTER ? y + ((h - uiFont.height) >> 1) : a & BOTTOM ? y + h - ((h - uiFont.height) >> 1) - uiFont.height : y;
+    const fh = this.getBaseFontHeight();
+    const ty = a & VCENTER ? y + ((h - fh) >> 1) : a & BOTTOM ? y + h - ((h - fh) >> 1) - fh : y;
     const anchor = (a & (HCENTER | RIGHT)) | TOP | (a & HCENTER || a & RIGHT ? 0 : 4);
+    this.paintLabel(g, tx, ty, anchor);
+  }
+
+  /** GLabel.paintLabel: system-font text with an optional 4-way or drop-shadow border. */
+  protected paintLabel(g: Graphics, tx: number, ty: number, anchor: number): void {
+    if (!this.label) return;
     const color = this.isFocus() ? this.selectLabelColor : this.labelColor;
     const border = this.isFocus() ? this.selectBorderColor : this.borderColor;
-    if (border !== -1) drawBorderString(g, border, color, this.label, tx, ty, anchor);
+    if (border !== -1 && this.isSetting(128)) {
+      g.setColor(border);
+      g.drawString(this.label, tx + 1, ty + 1, anchor);
+      g.setColor(color);
+      g.drawString(this.label, tx, ty, anchor);
+    } else if (border !== -1) drawBorderString(g, border, color, this.label, tx, ty, anchor);
     else {
       g.setColor(color);
       g.drawString(this.label, tx, ty, anchor);
@@ -675,9 +696,63 @@ export class GLabel extends GWidget {
 }
 
 export class GPixelLabel extends GLabel {
+  pixelFont: PixelFont | null = null;
+  pixelString: PixelString | null = null;
+  pixelColorTable: number[] | null = null;
+  focusPixelColorTable: number[] | null = null;
+
   constructor(vm: Int32Array) {
     super(vm);
     this.setType(5);
+  }
+
+  /** Falls back to the system font when the .t file is missing (Java: Font.getFont(-99,0,size)). */
+  setFont(size: number): void {
+    this.pixelFont = PixelFont.getFont(size);
+  }
+
+  setPixelColorTable(t: number[]): void {
+    this.pixelColorTable = t.map((c) => c | 0xff000000);
+  }
+
+  setFocusPixelColorTable(t: number[]): void {
+    this.focusPixelColorTable = t.map((c) => c | 0xff000000);
+  }
+
+  protected getBaseFontHeight(): number {
+    return this.pixelString ? this.pixelString.getHeight() : super.getBaseFontHeight();
+  }
+
+  protected getStringWidth(): number {
+    return this.pixelString ? this.pixelString.getWidth() : super.getStringWidth();
+  }
+
+  resetSize(): void {
+    if (this.pixelFont != null) this.pixelString = new PixelString(this.label, this.pixelFont);
+    super.resetSize();
+  }
+
+  protected paintLabel(g: Graphics, tx: number, ty: number, anchor: number): void {
+    const ps = this.pixelString;
+    if (ps == null) {
+      const shift = (this.getBaseFontHeight() / 4 | 0) - 2;
+      super.paintLabel(g, tx, shift > 0 ? ty + shift : ty, anchor);
+      return;
+    }
+    let color = this.labelColor;
+    let border = this.borderColor;
+    let rows = this.pixelColorTable;
+    if (this.isFocus()) {
+      color = this.selectLabelColor;
+      border = this.selectBorderColor;
+      if (this.focusPixelColorTable != null) rows = this.focusPixelColorTable;
+    }
+    if (border !== -1) {
+      if (this.isSetting(128)) ps.drawSimpleBorderString(g, border, color, tx, ty, anchor, rows);
+      else ps.drawBorderString(g, border, color, tx, ty, anchor, rows);
+    } else {
+      ps.draw(g, tx, ty, anchor, color, rows);
+    }
   }
 }
 

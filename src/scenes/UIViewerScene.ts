@@ -6,6 +6,7 @@ import { imageSetFiles } from '../game/main/GameView';
 import { uiFont, uiScreen, type GWidget } from '../game/gui/GWidget';
 import { buildAndShow } from '../game/ui/UIBuilder';
 import { collectImageSets } from '../game/ui/UIPreview';
+import { PIXEL_FONT_SIZES } from '../game/string/PixelFont';
 import { parseUIFile, uiMetrics, type UIFile } from '../game/ui/XmlParse';
 import { MenuScene } from './MenuScene';
 import { COLOR_DIM, COLOR_TITLE, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
@@ -44,7 +45,7 @@ export class UIViewerScene implements Scene {
     this.status = 'Đang tải…';
     this.root = null;
     const fs = getAssetFS();
-    await fs.preload([`ui/${id}.ui`]);
+    await fs.preload([`ui/${id}.ui`, ...PIXEL_FONT_SIZES.map((n) => `common/${n}.t`)]);
     const data = fs.get(`ui/${id}.ui`);
     if (!data || token !== this.token) return;
     try {
@@ -109,6 +110,6 @@ export class UIViewerScene implements Scene {
     const lib = this.file?.lib.length ?? 0;
     g.drawString(`ui/${id}.ui  (${this.idx + 1}/${this.ids.length})  thư viện: ${lib}  ${this.status}`, 4, SCREEN_HEIGHT - 32, LEFT | TOP);
     g.setColor(COLOR_DIM);
-    g.drawString('←/→ đổi · Enter ẩn chú thích · Esc thoát · chữ: font hệ thống (chưa có .t)', 4, SCREEN_HEIGHT - 17, LEFT | TOP);
+    g.drawString('←/→ đổi · Enter ẩn chú thích · Esc thoát · GLabel: font hệ thống · GPixelLabel: font .t', 4, SCREEN_HEIGHT - 17, LEFT | TOP);
   }
 }

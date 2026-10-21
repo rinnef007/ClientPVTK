@@ -96,8 +96,18 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
       }
       break;
     }
+    case 17:
+      // Java's setFont does not rebuild the PixelString: FONT must precede DATA_LABEL to apply.
+      if (w instanceof GPixelLabel) w.setFont(n(0));
+      break;
     case 23:
       if (w instanceof GLabel) w.borderColor = n(0);
+      break;
+    case 38:
+      if (w instanceof GPixelLabel) w.setPixelColorTable(a[0]);
+      break;
+    case 39:
+      if (w instanceof GPixelLabel) w.setFocusPixelColorTable(a[0]);
       break;
     case 27:
       if (w instanceof GTextArea) {
