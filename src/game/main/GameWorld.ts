@@ -13,11 +13,21 @@ let myMoveSpeed = 6;
 let head = 0;
 let tail = 0;
 
+/** Mission.newRadarMapID / newRadarGx / newRadarGy (set by quest messages from the server). */
+export const missionRadar: { mapId: number; gx: number; gy: number } = { mapId: -1, gx: 0, gy: 0 };
+/** GameCanvas.isMotion source; scenes point it at their tick counter. */
+export let motion: () => number = () => 0;
+export function setMotion(fn: () => number): void {
+  motion = fn;
+}
+
 export function setGameMap(m: GameMap | null): void {
   gameMap = m;
   GameMap.npcAt = (gx, gy) => getNPC(gx, gy) != null;
   GameMap.smallMapInfo = () => ({
     me: myPlayer == null ? null : { gx: myPlayer.getGx(), gy: myPlayer.getGy(), dir: myPlayer.getDir() },
+    radar: missionRadar,
+    motion: motion(),
     npcs: npcList.map((n) => ({
       gx: n.getGx(), gy: n.getGy(), npcType: n.npcType, sign: n.getSign(), jumpIcon: n.isJumpIcon(), visible: n.isVisible(),
     })),

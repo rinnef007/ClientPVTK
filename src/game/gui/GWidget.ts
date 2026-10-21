@@ -7,6 +7,8 @@ import type { Graphics } from '../../midp/Graphics';
 import { BOTTOM, HCENTER, RIGHT, TOP, VCENTER } from '../../midp/anchor';
 import { drawBorderString, drawBoxLines, drawFrameBox, drawScrollBar, drawScrollBar2, drawImageNumber, fillArcRect, fillArcRect2, getImageSet } from '../main/GameView';
 import type { ImageSet } from '../image/ImageSet';
+import type { Image } from '../image/Image';
+import { drawGameImage } from '../common/Utilities';
 import type { GameSprite } from '../sprite/GameSprite';
 import { PixelFont, PixelString } from '../string/PixelFont';
 import { PowerString } from '../string/PowerString';
@@ -50,13 +52,21 @@ export const uiScreen = { width: 320, height: 480 };
  */
 export const uiClock = { tick: 0 };
 
+/** GameCanvas.isMotion: flips every 8 logic ticks; blinking widgets hide while it is 1. */
+export function isMotion(): number {
+  return (uiClock.tick >> 3) & 1;
+}
+
 let keySeq = 0;
+
+/** GWidget.DEFAULT_INT_ARRAY: the shared "no colour table" marker ({-1}). */
+export const DEFAULT_INT_ARRAY: readonly number[] = [-1];
 
 export class GWidget {
   vm: Int32Array;
   parent: GContainer | null = null;
-  colorTable: number[] | null = [-1];
-  focusColorTable: number[] | null = [-1];
+  colorTable: number[] | null = DEFAULT_INT_ARRAY as number[];
+  focusColorTable: number[] | null = DEFAULT_INT_ARRAY as number[];
   fragmentTable: number[] | null = null;
   focusFragmentTable: number[] | null = null;
   shadeColorTable: number[] | null = null;
@@ -1578,23 +1588,84 @@ export class GPixelLabel extends GLabel {
 }
 
 export class GIcon extends GPixelLabel {
-  iconSet = -1;
-  iconFrame = -1;
+  iconRes: ImageSet | null = null;
+  iconIndex = -1;
+  trans = 0;
+  anchor2 = 3;
+  backColorIndex = -1;
+  numberRes: ImageSet | null = null;
+  numberIndex = -1;
+  numberSpace = 0;
+  numberRightDis = 0;
+  numberBottomDis = 0;
+  number = 0;
+  isClear = false;
+  hasMask = false;
+  maskRgb = 0;
 
   constructor(vm: Int32Array) {
     super(vm);
     this.setType(1);
   }
 
-  setIconData(setId: number, frame: number): void {
-    this.iconSet = setId;
-    this.iconFrame = frame;
+  /** DATA_ICON: frame `frame` of image set `setId`, drawn with `trans` at `anchor` (default centred). */
+  setIconData(setId: number | ImageSet | null, frame: number, trans = 0, anchor = 3): void {
+    const set = typeof setId === 'number' ? getImageSet(setId) : setId;
+    if (set == null) return;
+    this.iconRes = set;
+    this.setIconIndex(frame);
+    this.trans = trans;
+    this.anchor2 = anchor;
   }
 
-  protected paintContent(g: Graphics): void {
-    const set = getImageSet(this.iconSet);
-    if (set) set.drawHVFrame(g, this.iconFrame, this.vm[VM.XX] + (this.vm[VM.W] >> 1), this.vm[VM.YY] + (this.vm[VM.H] >> 1));
-    super.paintContent(g);
+  /** Grows the minimum size to the frame (and sizes an unsized icon). */
+  setIconIndex(frame: number, backColor = -1): void {
+    this.iconIndex = frame;
+    if (frame >= 0 && this.iconRes != null) {
+      const w = this.iconRes.getFrameWidth(frame);
+      const h = this.iconRes.getFrameHeight(frame);
+      if (w > this.getMinW()) this.setMinWidth(w);
+      if (h > this.getMinH()) this.setMinHeight(h);
+      if (this.getW() === 0) this.setSize(this.getMinW(), this.getMinH());
+    }
+    this.backColorIndex = backColor;
+  }
+
+  /** ICON_NUM_DATA: a count drawn bottom-right with image digits. */
+  setNumberData(setId: number, index: number, space: number, right: number, bottom: number): void {
+    this.numberRes = getImageSet(setId);
+    this.numberIndex = index;
+    this.numberSpace = space;
+    this.numberRightDis = right;
+    this.numberBottomDis = bottom;
+  }
+
+  /**
+   * GIcon.paint: the label first, then the icon (horizontally centred, vertically by anchor) and
+   * its count. Bit 256 blinks the whole widget with GameCanvas.isMotion. Not ported: item back
+   * plates (GameView.backIcons), set colour frames and star/gem counts.
+   */
+  paint(g: Graphics): void {
+    if (this.isSetting(256) && isMotion() === 1) return;
+    super.paint(g);
+    const vm = this.vm;
+    if (this.isClear) this.setPaintClip(g);
+    if (this.iconRes != null && this.iconIndex >= 0) {
+      const x = vm[VM.OFFSET_X] + vm[VM.XX] + ((vm[VM.W] / 2) | 0);
+      let y = vm[VM.OFFSET_Y] + vm[VM.YY];
+      if (this.anchor2 & 2) y += (vm[VM.H] / 2) | 0;
+      this.iconRes.drawFrame(g, this.iconIndex, x, y, this.trans, this.anchor2);
+    }
+    if (this.numberRes != null && this.numberIndex >= 0 && this.number > 0) {
+      drawImageNumber(g, this.numberRes, this.numberIndex, String(this.number),
+        vm[VM.OFFSET_X] + vm[VM.XX] + vm[VM.W] - this.numberRightDis,
+        vm[VM.OFFSET_Y] + vm[VM.YY] + vm[VM.H] - this.numberBottomDis, this.numberSpace, 40);
+    }
+    if (this.hasMask) {
+      g.setColor(this.maskRgb);
+      g.fillRect(vm[VM.OFFSET_X] + vm[VM.XX], vm[VM.OFFSET_Y] + vm[VM.YY], vm[VM.W], vm[VM.H]);
+    }
+    g.setClip(0, 0, uiScreen.width, uiScreen.height);
   }
 }
 
@@ -1784,6 +1855,8 @@ export class GGameIcon extends GWidget {
   isClear = true;
   isRotate = false;
   sprite: GameSprite | null = null;
+  /** setImage: a still image drawn centred (e.g. a pet portrait). */
+  viewImage: Image | null = null;
   private lastTick = -1;
 
   constructor(vm: Int32Array) {
@@ -1833,12 +1906,26 @@ export class GGameIcon extends GWidget {
     sp.draw(g, vm[VM.OFFSET_X] + vm[VM.XX] + (vm[VM.W] >> 1), foot);
   }
 
+  setImage(img: Image | null): void {
+    this.viewImage = img;
+  }
+
+  /** Focused with no focus colours: the sprite is drawn under the frame instead of over it. */
   paint(g: Graphics): void {
     this.setPaintClip(g);
-    if (this.colorTable != null) {
-      drawFrameBox(g, this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H], this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
+    const [x, y, w, h] = [this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]];
+    let spriteDone = false;
+    if (this.isFocus()) {
+      if (this.focusColorTable === DEFAULT_INT_ARRAY) {
+        this.drawSprite(g);
+        spriteDone = true;
+      }
+      drawFrameBox(g, x, y, w, h, this.focusColorTable, this.focusShadeColorTable, this.focusFragmentTable, null, -1, -1);
+    } else if (this.colorTable != null) {
+      drawFrameBox(g, x, y, w, h, this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
     }
-    this.drawSprite(g);
+    drawGameImage(g, this.viewImage, x + ((w / 2) | 0), y + ((h / 2) | 0), 3);
+    if (!spriteDone) this.drawSprite(g);
     g.setClip(0, 0, uiScreen.width, uiScreen.height);
   }
 }

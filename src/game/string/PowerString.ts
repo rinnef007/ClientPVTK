@@ -97,6 +97,19 @@ export function splitString(s: string | null, font: TextFont, maxW: number): str
   return out;
 }
 
+/** Integer.toHexString, left-padded to 6 digits. */
+function toHexString(v: number): string {
+  const h = (v >>> 0).toString(16);
+  return h.length > 0 && h.length < 6 ? h.padStart(6, '0') : h;
+}
+
+function makeIndexValue(c: string, a: number, b: number, d: number): string {
+  let s = `/${c}${a < 10 ? '0' : ''}${a}`;
+  if (b >= 0) s += `${b < 10 ? '0' : ''}${b}`;
+  if (d >= 0) s += `${d}`;
+  return s;
+}
+
 export class StringEntity {
   index = 0;
   backColorIconIndex = -1;
@@ -186,6 +199,16 @@ export class PowerString {
   iconOffset = 0;
 
   private constructor(readonly font: TextFont) {}
+
+  /** "/cRRGGBB" + text + "/p" ("{}" after the colour underlines). */
+  static makeColorString(text: string, rgb: number, underLine = false): string {
+    return `/c${toHexString(rgb)}${underLine ? UNDERLINE_CHAR : ''}${text}/p`;
+  }
+
+  /** "/i" + set id (2 digits) + frame (2 digits) + "0": an image-set icon inline. */
+  static makeIconString(setId: number, frame: number): string {
+    return makeIndexValue('i', setId, frame, 0);
+  }
 
   static createPowerString(s: string | null, font: TextFont): PowerString {
     const p = new PowerString(font);

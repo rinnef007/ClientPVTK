@@ -41,6 +41,10 @@ export interface CameraTarget {
 export interface SmallMapInfo {
   me: { gx: number; gy: number; dir: number } | null;
   npcs: { gx: number; gy: number; npcType: number; sign: number; jumpIcon: boolean; visible: boolean }[];
+  /** Mission.newRadar*: the current quest target, when it is on this map. */
+  radar?: { mapId: number; gx: number; gy: number } | null;
+  /** GameCanvas.isMotion: the radar mark blinks with it. */
+  motion?: number;
 }
 
 export class GameMap {
@@ -463,10 +467,10 @@ export class GameMap {
   /**
    * Mini map scrolled to keep the player centred, NPC markers from image set 4 (GameView.mapSet),
    * the player arrow, the cell coordinates in set 1002 above it and the map name below.
-   * Not ported: the mission radar marker and the "hide mini map" player setting.
+   * Not ported: the "hide mini map" / "show monsters" player settings.
    */
   private drawSmallMap(g: Graphics): void {
-    const { me, npcs } = GameMap.smallMapInfo();
+    const { me, npcs, radar, motion } = GameMap.smallMapInfo();
     if (me == null) return;
     const set = getImageSet(4);
     const mx = GameMap.MAP_X;
@@ -506,6 +510,7 @@ export class GameMap {
         const signFrame = { 1: 0, 2: 5, 3: 1 }[n.sign];
         if (signFrame !== undefined) set.drawFrame(g, signFrame, x, y, 0, 3);
       }
+      if (radar != null && radar.mapId === this.mapID && motion === 1) set.drawFrame(g, 6, ox + radar.gx * 2, oy + radar.gy * 2, 0, 3);
       const trans = ({ 0: 5, 1: 3, 3: 4 } as Record<number, number>)[me.dir] ?? 0;
       set.drawFrame(g, 2, ox + px, oy + py, trans, 3);
       g.setClip(0, 0, this.screenWidth, this.screenHeight);

@@ -1,4 +1,4 @@
-import { HCENTER, LEFT, TOP } from '../midp/anchor';
+import { LEFT, TOP } from '../midp/anchor';
 import { FONT_MEDIUM, FONT_SMALL, type Graphics } from '../midp/Graphics';
 import { KEY_FIRE, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
 import { NPC } from '../game/actor/NPC';
@@ -14,12 +14,15 @@ import { GameSprite, preloadSprite, resolveSprite } from '../game/sprite/GameSpr
 import { DEFAULT_APPEARANCE, SPRITE_MAN_HEAD, createHeadSpriteByIcon, createSpriteByIcon, encodeIcons, type Appearance } from '../game/sprite/SpriteIcon';
 import { getAssetFS } from '../game/common/Utilities';
 import { imageSetFiles } from '../game/main/GameView';
-import { uiClock } from '../game/gui/GWidget';
+import { isMotion, uiClock, uiFont, uiScreen } from '../game/gui/GWidget';
 import { PIXEL_FONT_SIZES } from '../game/string/PixelFont';
 import { parseUIFile } from '../game/ui/XmlParse';
 import { collectImageSets } from '../game/ui/UIPreview';
 import { collectSpriteIds } from '../game/ui/UIBuilder';
-import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud } from '../game/ui/WorldHud';
+import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles } from '../game/ui/WorldHud';
+import * as WorldMessage from '../game/main/WorldMessage';
+import { msgEnv } from '../game/core/PowerMsg';
+import { CHANNEL_AREA, CHANNEL_SYSTEM, CHANNEL_TEAM, CHANNEL_WORLD, ChatMsg } from '../game/main/ChatMsg';
 import { currentAppearance } from './DressingRoomScene';
 import { MenuScene } from './MenuScene';
 import { COLOR_TEXT, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
@@ -27,9 +30,19 @@ import { SOFTKEY_H, initUIEnvironment, softKeyAt } from './ui';
 
 const HUD_H = 20;
 /** Image sets the HUD code uses beyond those named in ui/211: mini map marks, small digits, combat digits. */
-const HUD_EXTRA_SETS = [4, 1002, 238];
+const HUD_EXTRA_SETS = [4, 1002, 238, 216];
 /** Made-up numbers for the HUD: there is no server to send the real player data. */
-const DEMO_STATS = { level: 25, hp: 820, maxHp: 1000, mp: 310, maxMp: 500, exp: 4200, maxExp: 10000, combatPoint: 12345, value118: 0 };
+const DEMO_STATS = { level: 25, hp: 820, maxHp: 1000, mp: 310, maxMp: 500, exp: 4200, maxExp: 10000, combatPoint: 12345, value118: 0, level2: 0 };
+const DEMO_PET = { level: 18, hp: 450, maxHp: 600, mp: 120, maxMp: 300, exp: 700, maxExp: 2000, petIcon: 501 };
+/** Made-up chat lines (channel, sender, female, text) standing in for server chat messages. */
+const DEMO_CHAT: [number, string, boolean, string][] = [
+  [CHANNEL_WORLD, 'KiếmKhách', false, 'Có ai đi phụ bản không?'],
+  [CHANNEL_SYSTEM, '', false, 'Đây là bản đồ thử offline, tin nhắn là dữ liệu giả.'],
+  [CHANNEL_AREA, 'TiểuLinh', true, 'Chào mọi người /cff0000~/p'],
+  [CHANNEL_TEAM, 'ĐạiHiệp', false, 'Gặp nhau ở chỗ xe ngựa nhé.'],
+];
+/** The NPC that carries the demo quest (shown with "!" and the radar mark on the mini map). */
+const QUEST_NPC = 1;
 /** GameSprite.SPRITE_POINTER_EFFECT: the ripple shown where the player taps. */
 const SPRITE_POINTER_EFFECT = 1216;
 const PET_SPRITES = [501, 505, 509];
@@ -64,8 +77,6 @@ export class MapScene implements Scene {
   private pointerTemplate: GameSprite | null = null;
   private hud: WorldHud | null = null;
   private showHud = true;
-  private hudMessage = '';
-  private hudMessageUntil = 0;
 
   constructor(private readonly ctx: Context) {
     void this.load();
@@ -79,7 +90,7 @@ export class MapScene implements Scene {
     const data = fs.get(path);
     if (!data) return null;
     const f = parseUIFile(data);
-    await fs.preload([...collectImageSets(f), ...HUD_EXTRA_SETS].flatMap(imageSetFiles));
+    await fs.preload([...[...collectImageSets(f), ...HUD_EXTRA_SETS].flatMap(imageSetFiles), ...petIconFiles(DEMO_PET.petIcon)]);
     await Promise.all([...collectSpriteIds(f), SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
     initUIEnvironment();
     return WorldHud.create(data);
@@ -131,6 +142,7 @@ export class MapScene implements Scene {
       n.setAnimationByDir(false);
       npcs.push(n);
     }
+    npcs[QUEST_NPC].icon2 = 1; // quest available
     await Promise.all(
       npcs.flatMap((n) => (n.getPlayerSprite()?.fragmentFiles ?? []).map((f) => f?.gameImage?.getImage()?.ready)),
     );
@@ -148,11 +160,22 @@ export class MapScene implements Scene {
     map.init();
     if (hud) {
       const [icon1] = encodeIcons(currentAppearance);
-      hud.updateWorldPlayerInfoUI({ ...DEMO_STATS, headSprite: await resolveSprite(() => createHeadSpriteByIcon(icon1)) });
+      hud.updateWorldPlayerInfoUI({ ...DEMO_STATS, pet: DEMO_PET, headSprite: await resolveSprite(() => createHeadSpriteByIcon(icon1)) });
       const mini = hud.get(EVENT_ALL_INFO_SMALL_MAP);
       GameMap.initSmallMapWidth(mini, SCREEN_WIDTH, map);
-      hud.input.onAction = (w) => this.say(w == null ? '' : `HUD: sự kiện ${w.getEventType()} (chưa port hành động)`);
+      Object.assign(msgEnv, { width: uiScreen.width, height: uiScreen.height, font: uiFont });
+      WorldMessage.clearAll();
+      WorldMessage.initWorldShowLocation((ev) => hud.get(ev), true);
+      WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
+      WorldMessage.addNoticeMsg('Chào mừng đến bản đồ thử (offline). Mọi số liệu và tin nhắn ở đây đều là dữ liệu giả.');
+      WorldMessage.addPointMsg('Nhiệm vụ: nói chuyện với NPC có dấu ! (xem chấm nhấp nháy trên bản đồ nhỏ).');
+      hud.input.onAction = (w) => {
+        if (w != null) WorldMessage.addPromptMsg(`HUD: sự kiện ${w.getEventType()} (chưa port hành động)`);
+      };
     }
+    const quest = npcs[QUEST_NPC];
+    Object.assign(GameWorld.missionRadar, { mapId: map.getMapID(), gx: quest.sourceGx, gy: quest.sourceGy });
+    GameWorld.setMotion(isMotion);
     this.hud = hud;
     this.others = others;
     this.map = map;
@@ -164,6 +187,13 @@ export class MapScene implements Scene {
     if (input.key === KEY_FIRE) this.showGrid = !this.showGrid;
     if (input.key === KEY_STAR) this.showHud = !this.showHud;
     uiClock.tick++;
+    WorldMessage.logic();
+    if (this.hud && uiClock.tick % 80 === 0) {
+      const [ch, who, female, text] = DEMO_CHAT[(uiClock.tick / 80) % DEMO_CHAT.length];
+      const m = new ChatMsg(ch, ch === CHANNEL_SYSTEM ? -1 : 9, who, text, 0);
+      if (female) m.flag |= 16;
+      WorldMessage.addMsg(m);
+    }
     // Full repaint of the back buffer, e.g. to compare against the incremental scroll path.
     if (input.key === KEY_POUND) this.map?.setTag(TAG_FORCE_PAINT, true);
 
@@ -219,14 +249,11 @@ export class MapScene implements Scene {
     }
   }
 
-  private say(msg: string): void {
-    this.hudMessage = msg;
-    this.hudMessageUntil = Date.now() + 2500;
-  }
-
   private leave(): void {
     GameWorld.setMyPlayer(null);
     GameWorld.setNpcList([]);
+    GameWorld.missionRadar.mapId = -1;
+    WorldMessage.clearAll();
     GameWorld.otherModels.clear();
     this.ctx.go(new MenuScene(this.ctx));
   }
@@ -250,13 +277,9 @@ export class MapScene implements Scene {
       g.setFontSize(FONT_MEDIUM);
       hud.root.paint(g);
       g.setClip(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-      if (Date.now() < this.hudMessageUntil && this.hudMessage) {
-        g.setFontSize(FONT_SMALL);
-        g.setColor(0xc0000000);
-        g.fillRect(0, SCREEN_HEIGHT / 2 - 12, SCREEN_WIDTH, 22);
-        g.setColor(0xffff00);
-        g.drawString(this.hudMessage, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 9, TOP | HCENTER);
-      }
+      // GameCanvas.paint: world (with HUD), bottom chat, dialogs, then notices/prompts on top.
+      WorldMessage.paintBottomUIMsg(g);
+      WorldMessage.paintUpUIMsg(g);
       return;
     }
     g.setColor(0x10141c);

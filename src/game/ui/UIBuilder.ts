@@ -122,7 +122,7 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
       if (w instanceof GLabel) w.setLineColorTable(a[0], a[1]);
       break;
     case 15:
-      if (w instanceof GIcon) w.setIconData(n(0), n(1));
+      if (w instanceof GIcon) w.setIconData(n(0), n(1), n(2), n(3));
       break;
     case 19: {
       if (!(w instanceof GContainer)) break;
@@ -168,6 +168,9 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
       break;
     case 26:
       if (w instanceof GGameBar) w.setValue(n(0), n(1));
+      break;
+    case 31:
+      if (w instanceof GIcon) w.setNumberData(n(0), n(1), n(2), n(3), n(4));
       break;
     case 40:
       if (w instanceof GImageNumer) w.setData(n(0), n(1), n(2));
@@ -227,8 +230,8 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
     case 47:
       if (w instanceof GLabel) w.setSetting(n(0), true);
       break;
-    // Not applied: 10/20 (unused by the shipped files), 30 (window focus child), 31 (icon
-    // number data), 48 (view images) — focus/input and GameView.initImage are not ported yet.
+    // Not applied: 10/20 (unused by the shipped files), 30 (window focus child) and
+    // 48 (view images: GameView.initImage is not ported yet).
   }
 }
 
