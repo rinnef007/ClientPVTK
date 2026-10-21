@@ -1,4 +1,5 @@
 import { GameLoop } from './engine/GameLoop';
+import { initGameResources } from './game/main/GameResources';
 import { Graphics } from './midp/Graphics';
 import { ImageStore, loadManifest } from './midp/ImageStore';
 import { InputState } from './midp/Input';
@@ -38,10 +39,13 @@ async function boot(): Promise<void> {
   const input = new InputState(canvas, toLogical);
   const wsUrl = new URLSearchParams(location.search).get('ws') ?? DEFAULT_WS;
 
+  const manifest = await loadManifest();
+  await initGameResources(manifest);
+
   let scene: Scene;
   const context: Context = {
     images: new ImageStore(),
-    manifest: await loadManifest(),
+    manifest,
     net: new SocketClient(),
     wsUrl,
     go: (next) => {

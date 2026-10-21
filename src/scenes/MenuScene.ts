@@ -1,10 +1,12 @@
 import type { Graphics } from '../midp/Graphics';
 import { KEY_DOWN, KEY_FIRE, KEY_SOFT_LEFT, KEY_UP, type InputState } from '../midp/Input';
 import { AssetViewerScene } from './AssetViewerScene';
+import { MapScene } from './MapScene';
 import { NetTestScene } from './NetTestScene';
 import { SCREEN_WIDTH, type Context, type Scene } from './Scene';
 import { drawFrame, drawList, drawParagraph, listIndexAt, softKeyAt } from './ui';
 import { SplashScene } from './SplashScene';
+import { SpriteViewerScene } from './SpriteViewerScene';
 
 const TOP = 120;
 
@@ -14,6 +16,8 @@ export class MenuScene implements Scene {
 
   constructor(private readonly ctx: Context) {
     this.items = [
+      { label: 'Bản đồ thử', open: () => new MapScene(ctx) },
+      { label: 'Xem sprite / animation', open: () => new SpriteViewerScene(ctx) },
       { label: 'Xem tài nguyên', open: () => new AssetViewerScene(ctx) },
       { label: 'Kiểm tra mạng (mock)', open: () => new NetTestScene(ctx) },
       { label: 'Xem lại logo', open: () => new SplashScene(ctx) },
@@ -46,7 +50,7 @@ export class MenuScene implements Scene {
     drawFrame(g, 'Phong Vân Truyền Kỳ 2', 'Chọn', '');
     drawParagraph(
       g,
-      'Bản web học tập (giai đoạn 1). Dùng phím mũi tên / WASD, Enter để chọn, Esc để quay lại. Có thể chạm/bấm chuột.',
+      'Bản web học tập (giai đoạn 3: sprite & bản đồ). Dùng phím mũi tên / WASD, Enter để chọn, Esc để quay lại. Có thể chạm/bấm chuột.',
       16,
       50,
       SCREEN_WIDTH - 32,

@@ -17,6 +17,21 @@ import {
 
 export type Drawable = HTMLImageElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas;
 
+/** MIDP-style image whose pixels may still be decoding (see game/image/Image). */
+export interface DeferredImage {
+  readonly width: number;
+  readonly height: number;
+  readonly source: CanvasImageSource | null;
+}
+
+export type ImageLike = Drawable | DeferredImage;
+
+function resolve(img: ImageLike | null | undefined): [CanvasImageSource, number, number] | null {
+  if (!img) return null;
+  if ('source' in img) return img.source ? [img.source, img.width, img.height] : null;
+  return [img, img.width, img.height];
+}
+
 /** Pixel sizes used by the Android MIDP shim (Font.SIZE_SMALL/MEDIUM/LARGE). */
 export const FONT_SMALL = 12;
 export const FONT_MEDIUM = 16;
@@ -183,14 +198,16 @@ export class Graphics {
 
   // --- images ---
 
-  drawImage(img: Drawable | null | undefined, x: number, y: number, anchor: number): void {
-    if (!img) return;
-    const [ax, ay] = anchorBox(x, y, img.width, img.height, anchor);
-    this.ctx.drawImage(img, ax + this.tx, ay + this.ty);
+  drawImage(img: ImageLike | null | undefined, x: number, y: number, anchor: number): void {
+    const r = resolve(img);
+    if (!r) return;
+    const [src, w, h] = r;
+    const [ax, ay] = anchorBox(x, y, w, h, anchor);
+    this.ctx.drawImage(src, ax + this.tx, ay + this.ty);
   }
 
   drawRegion(
-    img: Drawable | null | undefined,
+    img: ImageLike | null | undefined,
     sx: number,
     sy: number,
     sw: number,
@@ -200,7 +217,9 @@ export class Graphics {
     y: number,
     anchor: number,
   ): void {
-    if (!img || sw <= 0 || sh <= 0) return;
+    const r = resolve(img);
+    if (!r || sw <= 0 || sh <= 0) return;
+    const src = r[0];
     const dw = swapsAxes(transform) ? sh : sw;
     const dh = swapsAxes(transform) ? sw : sh;
     const [ax, ay] = anchorBox(x, y, dw, dh, anchor);
@@ -231,7 +250,7 @@ export class Graphics {
         c.transform(0, 1, 1, 0, 0, 0);
         break;
     }
-    c.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    c.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
     c.restore();
   }
 

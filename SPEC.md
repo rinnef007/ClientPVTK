@@ -146,7 +146,7 @@ public/assets/       – (gitignored) ảnh nạp bằng import-assets
 |-----------|----------|------------|------------|
 | **P1 – Nền tảng** | Vite/TS, shim MIDP, Message/FrameDecoder/SocketClient, mock server, import ảnh, các màn Splash, Menu, Asset Viewer, Net Test | `npm test` pass; `npm run dev` + `npm run mock` → Net Test kết nối, gửi/nhận heartbeat; Asset Viewer duyệt được ảnh | ✅ làm trong commit này |
 | P2 – Luồng đăng nhập offline | Port `ServerInfo`, màn chọn server/nhân vật (`CG_LOGIN_*`), mock trả danh sách nhân vật giả | Tạo/chọn nhân vật giả và vào được "world" trống | ⏳ |
-| P3 – Sprite & bản đồ | Port `.pd/.pn`, `.pl`, `.fr`, `.spr`, `sprite/*`, `map/*` | Xem được animation nhân vật đúng màu; vẽ được 1 bản đồ dựng tay + nhân vật đi lại | ⏳ đã có dữ liệu (trừ bố cục map) |
+| **P3 – Sprite & bản đồ** | Port `.pd/.pn`, `.pl`, `.fr`, `.spr`, `sprite/*`, `map/*` | Xem được animation nhân vật đúng màu; vẽ được 1 bản đồ dựng tay + nhân vật đi lại | ✅ (xem §9) |
 | P4 – UI hệ thống | Port `.ui`, font `.t`, `gui/*`, `ui/UIObject`, một phần `UIHandler` (túi đồ, chat, nhiệm vụ) | Mở được túi đồ, chat với dữ liệu mock | ⏳ đã có dữ liệu |
 | P5 – Chiến đấu | `battle/*` theo lượt | Chơi một trận với quái mock | ⏳ |
 | P6 – Hoàn thiện | Âm thanh, lưu cài đặt (`localStorage` thay RMS), mobile touch, PWA | Lighthouse PWA, chơi được trên điện thoại | ⏳ |
@@ -169,3 +169,32 @@ mỗi giai đoạn có thể cần nhiều phiên làm việc.
    không chép máy móc.
 4. Bản quyền ảnh/âm thanh: chỉ dùng cục bộ cho học tập; không đưa lên repo công khai hay host public.
 5. Độ phân giải gốc 320×480 là suy luận từ kích thước logo, cần xác minh thêm ở `AndroidZoom`/`PipActivity`.
+
+## 9. Giai đoạn 3: sprite & bản đồ (đã làm)
+
+### 9.1 Code đã port (thư mục `src/game/`, giữ tên lớp/hàm như Java)
+| Java | TypeScript | Ghi chú |
+|------|------------|---------|
+| `common/Tool` (một phần) | `common/Tool.ts` | `byte2short`, `setKeyXY`, `binarySearch`, `getOffsetValue`… |
+| `common/Utilities` (một phần) | `common/Utilities.ts` | `getTranslate`, `getTransfromAfterMirror`, `loadColorImage`, `parsePalette`, `applyPalette`, `drawGameRegion` |
+| `main/ResourceHandler` | `main/ResourceHandler.ts` | Đủ bảng tra gói (`getAni*PakIDByIndex`), `getAniData`, gói map/fr |
+| `image/GameImage` | `image/GameImage.ts` | |
+| `sprite/FragmentFile`, `Frame`, `Animation` | cùng tên | Port đủ |
+| `sprite/GameSprite` | `sprite/GameSprite.ts` | Nạp, animation, vẽ, cờ trạng thái. **Chưa**: ghép trang bị (`createSpriteByIcon`, `doChangeSpriteIcon`), VIP/QQ, sprite nhà 2 người |
+| `map/GameMap` | `map/GameMap.ts` | Đọc map, va chạm, camera, bộ đệm cuộn vòng (`initMapBuffer`, `updateMapBuffer`, `fillCol/Row`, `drawMapBuffer`). **Chưa**: tìm đường, bản đồ nhỏ, escort, mũi tên chỉ đường |
+| `map/TileLayer`, `PixelLayer`, `PlayerLayer` | cùng tên | `PlayerLayer` vẽ nhân vật qua interface `MapModel` vì `Player/NPC/Model` chưa port |
+
+### 9.2 Chỗ khác bản gốc (có chủ đích)
+1. **Tải tài nguyên**: Java đọc file đồng bộ. Trên web, `AssetFS` tải trước (`preloadSprite`, `initGameResources`) rồi trả dữ liệu đồng bộ cho code đã port.
+2. **Giải mã ảnh**: bất đồng bộ (`Image.ready`). Kích thước ảnh lấy ngay từ header PNG, nên code tính bố cục vẫn chạy đồng bộ.
+3. **Bảng màu `.pl`**: chép đè giống Java, rồi *tính lại CRC* chunk `PLTE` (có 3/400 file `.pl` mẫu bị ngắn hơn chunk, trình duyệt sẽ từ chối PNG lỗi CRC).
+4. **`getSpriteByName/getFragmentByName`**: Java dò trong danh sách model đang sống. Web dùng một registry chung, kết quả tương đương (dùng lại thay vì nạp lại).
+5. **Đoạn decompile lỗi** (`createFragmentFile`, `drawGameImage` 5 tham số, `PixelLayer.drawColObject/drawRowObject`): viết lại theo ý đồ đọc được từ code, có chú thích tại chỗ.
+6. `fillCol/fillRow` xoá cột/hàng về đen trước khi vẽ lại. Bản gốc dựa vào tile nền phủ kín; với tile nền đục thì kết quả như nhau.
+7. **Bản đồ thử** (`map/TestMap.ts`): do bố cục map đến từ server, file này *tự sinh* byte theo đúng định dạng `GameMap.fromBytes`, dùng ảnh trong `map/1.pd`.
+8. **Nhân vật đi lại** (`MapScene.WalkingPlayer`): bản đơn giản (4 px/tick, chặn theo ô va chạm). Lớp `Player` gốc (đi theo đường tìm được và xác nhận với server) chưa port.
+
+### 9.3 Đã kiểm chứng
+- 2.966/2.966 file `.spr` đọc khớp từng byte (script Python độc lập).
+- 2.964/2.966 sprite nạp đủ mảnh và ảnh qua code TS. Sprite 1132, 1133 tham chiếu mảnh không có trong APK.
+- Chạy trên Chromium: so sánh ảnh sau 8 đoạn đường đi (cuộn từng phần) với ảnh vẽ lại toàn bộ (`TAG_FORCE_PAINT`) thì nền bản đồ khớp từng pixel. Chỗ khác chỉ nằm ở các sprite đang chạy animation.

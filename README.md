@@ -56,6 +56,16 @@ Có thể chạm hoặc bấm chuột; bấm vào thanh dưới cùng để dùn
 | `npm run gen-protocol -- <ProtocolDefine.java>` | Sinh lại `src/net/ProtocolDefine.ts` |
 
 ## Trạng thái
-Mới xong giai đoạn 1 (nền tảng): lớp tương thích MIDP, giao thức mạng, mock server, xem tài nguyên.
-Đã có đủ dữ liệu sprite/UI (`assets.rar`): chạy `npm run import-assets -- <thư mục giải nén rar>`.
-Bố cục bản đồ do server gửi nên không có sẵn (xem SPEC §2.3, §8).
+- Giai đoạn 1: lớp tương thích MIDP, giao thức mạng, mock server, xem tài nguyên.
+- Giai đoạn 3: port sprite/animation (`GameSprite`, `Frame`, `Animation`, `FragmentFile`) và bản đồ
+  (`GameMap` + các layer) từ Java; màn **Xem sprite** và **Bản đồ thử** (xem SPEC §9).
+
+Dữ liệu cần nạp là toàn bộ thư mục `assets/` của APK (`assets.rar`):
+`npm run import-assets -- <thư mục giải nén rar>`. Bố cục bản đồ do server gửi nên không có trong
+APK; bản đồ thử được tự sinh (`src/game/map/TestMap.ts`).
+
+### Phím trong các màn mới
+| Màn | Phím |
+|-----|------|
+| Xem sprite | ←/→ đổi sprite, 1/3 nhảy ±10, ↑/↓ đổi animation, Enter lật trái/phải, Q zoom |
+| Bản đồ thử | Giữ mũi tên để đi, Enter hiện lưới va chạm, Q bật/tắt ảnh bản đồ, = vẽ lại toàn bộ |
