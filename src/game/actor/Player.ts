@@ -47,8 +47,8 @@ export class Player extends Model {
   /** Attribute values by id (sent by the server in the real game). */
   readonly values = new Map<number, number>();
 
-  constructor() {
-    super(TYPE_PLAYER);
+  constructor(type = TYPE_PLAYER) {
+    super(type);
   }
 
   get(id: number): number {

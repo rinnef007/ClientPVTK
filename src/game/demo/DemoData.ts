@@ -101,6 +101,13 @@ export const DEMO_PLAYER_VALUES: [number, number][] = [
   [ATTR_MONEY3, 50],
 ];
 
+/** Made-up combat values: speed 31, damage 33~34, hits 35, attack 36..38, defence 39..41, dodge 42,
+ * hit 43..44, critical 45, and the extra ones a level 11+ character lists. */
+const DEMO_COMBAT_VALUES: [number, number][] = [
+  [31, 48], [33, 60], [34, 85], [35, 1], [36, 120], [37, 95], [38, 40], [39, 150], [40, 130], [41, 70],
+  [42, 35], [43, 30], [44, 12], [45, 20], [46, 5], [48, 30], [49, 15], [51, 10], [64, 70],
+];
+
 export function fillDemoPlayer(p: Player): void {
   p.bag = makeDemoBag();
   for (const [k, v] of DEMO_PLAYER_VALUES) p.set(k, v);
@@ -111,6 +118,8 @@ export function fillDemoPlayer(p: Player): void {
   p.race = 0;
   p.countryName = 'Quốc gia demo';
   p.countryRank = 'Dân thường';
+  // Combat values for the T.Tính tab (ids as in PlayerInfoUIAction.updatePlayerAttributeUI).
+  DEMO_COMBAT_VALUES.forEach(([k, v]) => p.set(k, v));
   p.missionList = makeDemoMissions();
   // The active pet: the item in slot 1 as a MyPet, with made-up stats.
   const petItemInSlot = p.bag.getItem(SLOT_PET);
@@ -121,6 +130,7 @@ export function fillDemoPlayer(p: Player): void {
       .forEach(([k, v]) => pet.set(k, v));
     [pet.str, pet.con, pet.agi, pet.ilt, pet.wis] = [22, 18, 15, 12, 10];
     [[6, 25], [7, 18], [8, 17], [9, 12], [10, 10]].forEach(([k, v]) => pet.set(k, v));
+    DEMO_COMBAT_VALUES.forEach(([k, v]) => pet.set(k, Math.max(1, (v * 0.6) | 0)));
     Object.assign(pet, { cp: 6, grow: 72, compre: 55, growLevel: 7, petAge: 1200, petmaxage: 2000, petHeadIcon: 501 });
     p.pet = pet;
   }

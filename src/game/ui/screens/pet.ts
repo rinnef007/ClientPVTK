@@ -14,7 +14,8 @@ import { GameSprite } from '../../sprite/GameSprite';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { UIObject, registerPageUpdater } from '../UIObject';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
-import { PlayerInfoUIAction, updatePlayerBaseUI } from './playerInfo';
+import { PlayerInfoUIAction, TAB_ATTRIBUTE, updatePlayerBaseUI } from './playerInfo';
+import { EVENT_ATTRIBUTE_PANEL, TYPE_PLAYER_ATTRIBUTE, processAttributeAction, updatePlayerAttributeUI } from './playerAttribute';
 
 export const TYPE_MERCENARY_LIST = 61;
 export const TYPE_PET_INFO = 52;
@@ -260,20 +261,24 @@ function updatePetOpeMenuNew(ui: UIHandler, pet: MyPet): void {
   ui.show();
 }
 
-/** The "Pet" tab (60) of updateDataToPetMerInfoUI: panels 55 / 58 / 59 and the tab row on top. */
-function updateDataToPetInfoUI(ui: UIHandler, pet: MyPet): void {
+/**
+ * updateDataToPetMerInfoUI: the "Pet" tab (60, panels 55 / 58 / 59) or "Th.Tính" (30, the
+ * attribute list), then the tab row on top.
+ */
+function updateDataToPetInfoUI(ui: UIHandler, pet: MyPet, tab = EVENT_PET_TAB): void {
   const frame = ui.getFrameContainer();
   if (frame == null) return;
   frame.setObj(pet);
-  for (const ev of [55, 58, 59, 2]) {
+  for (const ev of [55, 58, 59, 2, EVENT_ATTRIBUTE_PANEL]) {
     const w = ui.getGWidgetByEventType(ev);
     if (w) frame.remove(w);
   }
-  updatePlayerBaseUI(ui, pet, true, true, true);
+  if (tab === TAB_ATTRIBUTE) updatePlayerAttributeUI(ui, pet);
+  else updatePlayerBaseUI(ui, pet, true, true, true);
   const tabs = ui.getGWindowByEventType(2);
   if (tabs == null) return;
   for (const c of tabs.children) {
-    if (c.getEventType() !== EVENT_PET_TAB) continue;
+    if (c.getEventType() !== tab) continue;
     tabs.setFocus(c);
     if (c instanceof GLabel) c.setIsFocusLabelOffset([0, 3]);
   }
@@ -281,10 +286,16 @@ function updateDataToPetInfoUI(ui: UIHandler, pet: MyPet): void {
   ui.show();
 }
 
-/** PlayerInfoUIAction for ui/52: processPetMerInfoAction with only the "Pet" tab ported. */
+/** PlayerInfoUIAction for ui/52: processPetMerInfoAction with the "Pet" and "Th.Tính" tabs. */
 class PetInfoUIAction extends PlayerInfoUIAction {
   constructor(readonly pet: MyPet) {
     super(pet);
+  }
+
+  /** The tab the frame shows: Th.Tính while its panel is on screen, else Pet. */
+  private tab(ui: UIHandler): number {
+    const panel = ui.getGWidgetByEventType(EVENT_ATTRIBUTE_PANEL);
+    return panel != null && (ui.getFrameContainer()?.children.includes(panel) ?? false) ? TAB_ATTRIBUTE : EVENT_PET_TAB;
   }
 
   processLayerAction(ui: UIHandler, action: number): void {
@@ -302,9 +313,17 @@ class PetInfoUIAction extends PlayerInfoUIAction {
     const w = ui.getActionGWidget();
     if (w == null) return;
     if (w.getParentWindow()?.getEventType() === 2) {
-      // Th.Tính (30) and Skill (31) show the server's attribute / skill data.
-      if (w.getEventType() !== EVENT_PET_TAB) alertMessage(STR_NEED_SERVER);
-      updateDataToPetInfoUI(ui, this.pet);
+      // Skill (31) lists the pet's skills from the server.
+      const tab = w.getEventType();
+      if (tab === EVENT_PET_TAB || tab === TAB_ATTRIBUTE) updateDataToPetInfoUI(ui, this.pet, tab);
+      else {
+        alertMessage(STR_NEED_SERVER);
+        updateDataToPetInfoUI(ui, this.pet, this.tab(ui));
+      }
+      return;
+    }
+    if (this.tab(ui) === TAB_ATTRIBUTE) {
+      processAttributeAction(ui, this.pet, action);
       return;
     }
     if (w.getEventType() === 7) return; // processMerIconAction: the doll's look menu (server)
@@ -328,14 +347,14 @@ export function createPetInfoUI(pet: MyPet | null, parent: UIHandler | null, sub
 registerPageUpdater(TYPE_MERCENARY_LIST, (ui, page) => void updateDataToMercenaryListUI(ui, page, false));
 
 registerScreen('mercenaryList', {
-  uiTypes: [TYPE_MERCENARY_LIST, TYPE_PET_INFO],
+  uiTypes: [TYPE_MERCENARY_LIST, TYPE_PET_INFO, TYPE_PLAYER_ATTRIBUTE],
   open: (sub = 2) => createMercenaryListUI(GameWorld.myPlayer, sub),
   processLayerAction: processMercenaryListLayer,
 });
 
 /** HUD pet portrait (946): createPetInfoUI(GameWorld.getPlayerPet()). */
 registerScreen('petInfo', {
-  uiTypes: [TYPE_PET_INFO],
+  uiTypes: [TYPE_PET_INFO, TYPE_PLAYER_ATTRIBUTE],
   open: () => {
     const pet = GameWorld.myPlayer?.getPet();
     createPetInfoUI(pet instanceof MyPet ? pet : null, null);

@@ -1,8 +1,9 @@
 // The character screen (ui/3): UIHandler.createWorldPlayerInfoUI, PlayerInfoUIAction
 // (updateDataToPlayerPetMerInfoUI, clean/addPlayerInfoTabGWidget, updatePlayerBaseUI,
 // processBaseAction, isVaileAttBuff, cancelChangeAttValue) and UIHandler.updatePlayerPetMerInfoUI
-// (CFR decompile). Only the base tab (C.Bản) is ported; the other tabs (attributes, skills,
-// society, photos, talents) and confirming attribute points need more data or the server.
+// (CFR decompile). The base tab (C.Bản) and the attribute tab (T.Tính, ./playerAttribute) are
+// ported; the other tabs (skills, society, photos, talents) and confirming attribute points need
+// more data or the server.
 import { GGameBar, GGameIcon, GLabel, GLinePanel, GWindow } from '../../gui/GWidget';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX, ATTR_POINTS, Player } from '../../actor/Player';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../../actor/MyPet';
@@ -10,6 +11,7 @@ import * as GameWorld from '../../main/GameWorld';
 import { GameSprite } from '../../sprite/GameSprite';
 import { UIHandler, alertMessage, type UIListener } from '../UIHandler';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
+import { TYPE_PLAYER_ATTRIBUTE, processAttributeAction, updatePlayerAttributeUI } from './playerAttribute';
 
 export const TYPE_PLAYER_INFO = 3;
 const FRAME_PLAYER_INFO = 502;
@@ -90,6 +92,7 @@ export class PlayerInfoUIAction implements UIListener {
     const tabs = ui.getGWindowByEventType(2);
     const tab = (tabs?.focusWidget?.getObj() as number | null) ?? TAB_BASE;
     if (tab === TAB_BASE && action === 0) this.processBaseAction(ui);
+    else if (tab === TAB_ATTRIBUTE && action === 0) processAttributeAction(ui, this.player, action);
   }
 
   /** Closing with changed points asks to confirm them (a server request); offline they are undone. */
@@ -243,6 +246,7 @@ export function updateDataToPlayerInfoUI(ui: UIHandler, p: Player, tabId: number
   if (tab === -1) tab = TAB_BASE;
   if (full) cleanPlayerInfoTabGWidget(ui);
   if (tab === TAB_BASE) updatePlayerBaseUI(ui, p, full, true);
+  else if (tab === TAB_ATTRIBUTE) updatePlayerAttributeUI(ui, p);
   else alertMessage(STR_NEED_SERVER); // the other tabs are not ported
   if (full) addPlayerInfoTabGWidget(ui, tab);
 }
@@ -310,6 +314,6 @@ export function createWorldPlayerInfoUI(p: Player | null, tab: number): UIHandle
 }
 
 registerScreen('playerInfo', {
-  uiTypes: [TYPE_PLAYER_INFO],
+  uiTypes: [TYPE_PLAYER_INFO, TYPE_PLAYER_ATTRIBUTE],
   open: (tab = -1) => void createWorldPlayerInfoUI(GameWorld.myPlayer, tab),
 });

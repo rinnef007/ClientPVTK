@@ -4,6 +4,7 @@
 import { GameSprite } from '../sprite/GameSprite';
 import { createPetSpriteByIcon } from '../sprite/SpriteIcon';
 import { ITEM_TYPE_PET, SLOT_PET, type Item } from './Item';
+import { TYPE_PET } from './Model';
 import { Player } from './Player';
 
 /** Pet value ids for Model.get: growth level and grade. */
@@ -26,7 +27,7 @@ export class MyPet extends Player {
   icon1 = 0n;
 
   constructor(owner: Player | null) {
-    super();
+    super(TYPE_PET);
     this.owner = owner;
   }
 

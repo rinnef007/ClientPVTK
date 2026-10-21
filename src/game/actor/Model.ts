@@ -18,6 +18,8 @@ export const DIR_NONE = 8;
 
 export const TYPE_NPC = 1;
 export const TYPE_PLAYER = 3;
+/** MyPet (Model.setType(4)). */
+export const TYPE_PET = 4;
 
 /** Tab status bit set when a move finished; the next idle tick switches back to standing. */
 export const TAB_MOVE_END = 1;
