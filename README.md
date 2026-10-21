@@ -61,6 +61,7 @@ Có thể chạm hoặc bấm chuột; bấm vào thanh dưới cùng để dùn
   (`GameMap` + các layer) từ Java; màn **Xem sprite** và **Bản đồ thử** (xem SPEC §9).
 - Ghép trang bị (`createSpriteByIcon`/`doChangeSpriteIcon`) và màn **Thay trang phục** (SPEC §10).
 - Di chuyển gốc: `Model`/`Control`/`WorldPanel`, tìm đường A* và BFS, NPC đi lang thang (SPEC §11).
+- Giao diện (P4, đang làm): đọc 165 file `.ui`, layout, khung/nút/thanh HP, font `.t`; màn **Xem giao diện (.ui)** (SPEC §12).
 
 Dữ liệu cần nạp là toàn bộ thư mục `assets/` của APK (`assets.rar`):
 `npm run import-assets -- <thư mục giải nén rar>`. Bố cục bản đồ do server gửi nên không có trong
@@ -69,6 +70,7 @@ APK; bản đồ thử được tự sinh (`src/game/map/TestMap.ts`).
 ### Phím trong các màn mới
 | Màn | Phím |
 |-----|------|
+| Xem giao diện (.ui) | ←/→ đổi giao diện, Enter ẩn/hiện chú thích (chỉ hiển thị, chưa tương tác) |
 | Thay trang phục | ↑/↓ chọn bộ phận, ←/→ đổi kiểu/màu, Enter đi/đứng, Q lật. Bản đồ thử dùng bộ đồ này |
 | Xem sprite | ←/→ đổi sprite, 1/3 nhảy ±10, ↑/↓ đổi animation, Enter lật trái/phải, Q zoom |
 | Bản đồ thử | Giữ mũi tên để đi (trượt dọc tường), click/chạm để tìm đường, Enter hiện lưới va chạm, Q bật/tắt ảnh bản đồ, = vẽ lại toàn bộ |

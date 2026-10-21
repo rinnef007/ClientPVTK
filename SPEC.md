@@ -147,7 +147,7 @@ public/assets/       – (gitignored) ảnh nạp bằng import-assets
 | **P1 – Nền tảng** | Vite/TS, shim MIDP, Message/FrameDecoder/SocketClient, mock server, import ảnh, các màn Splash, Menu, Asset Viewer, Net Test | `npm test` pass; `npm run dev` + `npm run mock` → Net Test kết nối, gửi/nhận heartbeat; Asset Viewer duyệt được ảnh | ✅ làm trong commit này |
 | P2 – Luồng đăng nhập offline | Port `ServerInfo`, màn chọn server/nhân vật (`CG_LOGIN_*`), mock trả danh sách nhân vật giả | Tạo/chọn nhân vật giả và vào được "world" trống | ⏳ |
 | **P3 – Sprite & bản đồ** | Port `.pd/.pn`, `.pl`, `.fr`, `.spr`, `sprite/*`, `map/*` | Xem được animation nhân vật đúng màu; vẽ được 1 bản đồ dựng tay + nhân vật đi lại | ✅ (xem §9) |
-| P4 – UI hệ thống | Port `.ui`, font `.t`, `gui/*`, `ui/UIObject`, một phần `UIHandler` (túi đồ, chat, nhiệm vụ) | Mở được túi đồ, chat với dữ liệu mock | ⏳ đã có dữ liệu |
+| P4 – UI hệ thống | Port `.ui`, font `.t`, `gui/*`, `ui/UIObject`, một phần `UIHandler` (túi đồ, chat, nhiệm vụ) | Mở được túi đồ, chat với dữ liệu mock | 🔄 đang làm (xem §12) |
 | P5 – Chiến đấu | `battle/*` theo lượt | Chơi một trận với quái mock | ⏳ |
 | P6 – Hoàn thiện | Âm thanh, lưu cài đặt (`localStorage` thay RMS), mobile touch, PWA | Lighthouse PWA, chơi được trên điện thoại | ⏳ |
 
@@ -271,3 +271,25 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
 - NPC đi lang thang 3.000 tick không ra khỏi phạm vi.
 - Trên Chromium: chạm để đi (có hiệu ứng điểm chạm 1216), phím, người chơi khác đi `MoveTo`, NPC đi lang
   thang, không lỗi console.
+
+## 12. Giao diện game (P4) – tiến độ
+
+### 12.1 Đã làm
+| Phần | File | Ghi chú |
+|------|------|---------|
+| Đọc `.ui` (`XmlParse`) | `game/ui/XmlParse.ts` | Đã đối chiếu từng mã thuộc tính với hằng `ATTR_SET_*`. Giữ cả lỗi gốc "đọc trước 1 int rồi mới ép kiểu". **165/165 file đọc khớp tới byte cuối, 3.955 widget.** |
+| Mô hình widget | `game/gui/GWidget.ts` | `GWidget`, `GContainer`, `GLinePanel`, `GTextArea`, `GWindow`, `GLabel`, `GPixelLabel`, `GIcon`, `GGameBar`, `GImageNumer` |
+| Layout | `GContainer` | V (113 lần dùng), Grid2 (18), Grid (11), H (6) và các kiểu align. `layoutV` lấy từ CFR (Vineflower lỗi). Không file nào dùng border layout nên chưa port. |
+| Dựng UI | `game/ui/UIBuilder.ts` | Áp các lệnh gọi như `parseMethod`, nhân bản `batchAdd`, `UIHandler.show()` (setAbs → layout → căn giữa) |
+| Vẽ khung | `game/main/GameView.ts` | `drawFrameBox`, `drawImageBox`, `drawBackGround`, `drawShadeBox`, `drawBoxCorner`, `drawImageNumber`… |
+| Font bitmap | `game/string/PixelFont.ts` | `.t` 12/14/16/18/20, đọc khớp byte. Chỉ có chữ Hán + ASCII. Chỉ `GPixelLabel`/`GIcon` dùng, giống bản gốc; `GLabel` dùng font hệ thống như bản Android. |
+| Màu ARGB | `midp/Graphics.ts` | Byte alpha = 0 nghĩa là màu đặc, khác 0 thì giữ độ trong suốt, giống lớp giả lập Android |
+| Màn xem | `scenes/UIViewerScene.ts` | Duyệt cả 165 giao diện |
+
+### 12.2 Chưa làm / khác bản gốc
+- `GGameIcon` (icon sprite, 108 lần), `GScrollBar`, `GSpinner`: hiện chưa vẽ.
+- `GTextArea`: mới xuống dòng đơn giản; chưa xử lý mã định dạng `PowerString` (`/c...` màu, `/p`…).
+- Nhãn có icon đứng trước chữ (`iconValue`) và chữ chạy ngang khi quá dài (marquee) chưa port, nên vài nhãn còn bị cắt chữ.
+- Focus, phím, chạm, cuộn và hành vi riêng của từng màn (`UIHandler`, `UIAction`: 45k + 12k dòng) chưa port. Hiện chỉ **hiển thị**, chưa tương tác.
+- Font hệ thống: dùng Roboto/Arial để gần với Android, nhưng độ rộng chữ vẫn có thể lệch vài pixel.
+- `GameView.initImage` (các bộ ảnh đặc biệt như tiền, icon VIP) chưa port; mọi id đều nạp từ `common/<id>`.
