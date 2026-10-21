@@ -93,9 +93,7 @@ export function processWorldPanelLayer(ui: UIHandler, action: number): void {
 const MENU: Record<number, [string, number?] | (() => void)> = {
   11205: ['chat', -1], // chat history
   942: ['chat', 5], // new private message → private tab
-  // createPlayerMissionListUI: offline the player has no missions, so Java's own alert is all
-  // that is left (the mission / milestone / vitality list itself is not ported yet).
-  11207: () => alertMessage('Chưa có Nhiệm Vụ'),
+  11207: ['missionList', 12], // missions ("N.vụ"): createPlayerMissionListUI(0, 12)
   11208: ['equip', 0], // equipment ("Item")
   11201: ['itemList', 0], // bag ("Thuốc")
   11209: ['playerInfo', -1], // character ("N.vật")

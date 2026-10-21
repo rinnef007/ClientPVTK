@@ -313,6 +313,11 @@ const ALIGN_FILL = 256;
 const ALIGN_HCENTER = 512;
 const ALIGN_VCENTER = 1024;
 
+/** com.hz.gui.IGTopDraw. */
+export interface IGTopDraw {
+  draw(g: Graphics): void;
+}
+
 export class GContainer extends GWidget {
   children: GWidget[] = [];
   /** [mode, hgap, vgap, align, rows|gridW, cols|gridH] */
@@ -833,10 +838,22 @@ export class GContainer extends GWidget {
     }
   }
 
-  /** GContainer.paintChildren: visible, in-view children only. */
+  /** GContainer.paintChildren: visible, in-view children only, then the top draws. */
   paintChildren(g: Graphics): void {
     for (const c of this.children) if (c.isShow() && !c.isOutView()) c.paint(g);
     if (this.gsb != null && this.needScrollBar) this.gsb.paint(g);
+    if (this.topDrawVector != null) for (const d of this.topDrawVector) d.draw(g);
+  }
+
+  /** IGTopDraw objects painted over the children (e.g. MessageFrame). */
+  topDrawVector: IGTopDraw[] | null = null;
+
+  addTopDraw(d: IGTopDraw): void {
+    (this.topDrawVector ??= []).push(d);
+  }
+
+  getJavaTopDraw(i: number): IGTopDraw | null {
+    return this.topDrawVector?.[i] ?? null;
   }
 
   paint(g: Graphics): void {

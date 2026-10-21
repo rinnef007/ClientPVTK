@@ -312,9 +312,9 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
   | H.Thống (11202) | ui/87 menu hệ thống | Đủ mục; "Rời game" về menu chính |
   | Pet (11203) | ui/61 danh sách pet | Pet lấy từ vật phẩm pet trong túi/ô trang bị (`MyPet.doGetBagPetItem`): ảnh, tên theo màu phẩm chất, cấp, dấu "Đang chiến", các nút. Tab dung binh trống (cần server). "C.Tiết" của pet đang chiến mở ui/52; pet khác và các nút Chiến/Nghỉ/P.sinh/Sửa/P.Ấn cần server |
   | Chân dung pet trên HUD (946) | ui/52 thông tin pet | Tab Pet: tên, cấp, cấp trưởng thành, thanh điểm, HP/MP/EXP, thuộc tính, phẩm, tuổi, sao trưởng thành/lĩnh ngộ, hàng nút; "G.Thích" hiện giải thích. Tab Th.Tính/Skill và các nút thao tác cần server |
-  | N.vụ (11207) | — | Hiện đúng hộp báo của Java khi không có dữ liệu ("Chưa có Nhiệm Vụ"); màn danh sách chưa port |
+  | N.vụ (11207) | ui/37 danh sách nhiệm vụ, ui/46 chi tiết | Tab N.Vụ: tiêu đề "Nhiệm vụ chính", tên nhiệm vụ kèm "[Xong]" khi đạt mục tiêu; chọn dòng hiện khung mục tiêu (`MessageFrame`, tự ẩn sau 120 tick); "Chi tiết" mở ui/46 (mô tả, mục tiêu, phần thưởng exp/Lá/Bạc/Cống hiến). Chỉ port điều kiện "Hủy diệt" (2) và "Nhận được" (7). Tab H.Động/Tăng/Sôi Nổi, nhiệm vụ khiêu chiến, "Dò đường", "Hủy" cần server |
   | Map, X.Giao, T.Tựu, L.Địa, Thư, Nạp, cửa hàng, sự kiện… | — | Báo "cần kết nối server" (Java gửi yêu cầu lên server trước) |
 
-  Dữ liệu người chơi, pet, túi đồ, vật phẩm và người chơi khác đều là **dữ liệu giả** (`game/demo/DemoData.ts`); icon vật phẩm chọn tuỳ ý từ `common/1`, không khớp loại vật phẩm thật. `getClone` dựng lại widget từ dữ liệu `.ui` (Java chép trạng thái lúc chạy; các màn chỉ nhân bản mẫu chưa bị đổi nên kết quả như nhau).
+  Dữ liệu người chơi, pet, nhiệm vụ, túi đồ, vật phẩm và người chơi khác đều là **dữ liệu giả** (`game/demo/DemoData.ts`); icon vật phẩm chọn tuỳ ý từ `common/1`, không khớp loại vật phẩm thật. `getClone` dựng lại widget từ dữ liệu `.ui` (Java chép trạng thái lúc chạy; các màn chỉ nhân bản mẫu chưa bị đổi nên kết quả như nhau).
 - Font hệ thống: dùng Roboto/Arial để gần với Android, nhưng độ rộng chữ vẫn có thể lệch vài pixel.
 - `GameView.initImage` (các bộ ảnh đặc biệt như tiền, icon VIP) chưa port; mọi id đều nạp từ `common/<id>`.

@@ -89,6 +89,11 @@ export class PlayerBag {
     return [...this.items.entries()].sort((a, b) => a[0] - b[0]).map(([, it]) => it);
   }
 
+  /** Player.getItemNumByIdInBag: the stack total of item `id` in the bag. */
+  getItemNumByIdInBag(id: number): number {
+    return this.bagItems().reduce((n, [, it]) => (it.id === id ? n + it.quantity : n), 0);
+  }
+
   /** How many equipped items (slots 0..17) belong to a suit. */
   getEquipItemSetNum(setId: number): number {
     if (setId <= 0) return 0;

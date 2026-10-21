@@ -2,6 +2,7 @@
 // server at login; nothing here is taken from server data. Icon frames are picked from the item
 // sheet /common/1 without knowing which frame is which item type.
 import { BAG_START, ITEM_TYPE_PET, Item, PlayerBag, SLOT_PET } from '../actor/Item';
+import { CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../actor/MyPet';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, ATTR_MP_MAX, type Player } from '../actor/Player';
 
@@ -30,7 +31,7 @@ export function makeDemoBag(): PlayerBag {
   const bagItems = [
     item('Bình máu demo', 30, 0, 25, 'Hồi 500 HP (dữ liệu giả).', 27),
     item('Bình mana demo', 31, 0, 12, 'Hồi 300 MP (dữ liệu giả).', 27),
-    item('Đá cường hóa demo', 40, 2, 5),
+    Object.assign(item('Đá cường hóa demo', 40, 2, 5), { id: DEMO_STONE_ID }),
     item('Bảo thạch demo', 45, 3, 2),
     item('Cuộn dịch chuyển demo', 50, 1, 3, 'Về thành (dữ liệu giả).', 31),
     item('Trang bị demo', 14, 5),
@@ -49,6 +50,39 @@ function petItem(name: string, level: number, icon: bigint, grade: number): Item
   it.reqLv = level;
   it.icon = icon;
   return it;
+}
+
+const DEMO_STONE_ID = 9002;
+
+/** Made-up missions for the mission list: one in progress, two whose goals are met. */
+export function makeDemoMissions(): Mission[] {
+  const kill = new Mission(9001);
+  Object.assign(kill, {
+    name: 'Diệt sói hoang (demo)',
+    desc: 'Sói hoang quấy nhiễu dân làng. Hãy giúp trưởng thôn (nhiệm vụ giả, không có trong game).',
+    simpleDesc: 'Hủy diệt 10 Sói hoang demo ở ngoài thôn.',
+    dialogStartNotFinish: 'Còn chưa đủ sao? (dữ liệu giả)',
+    exp: 1500,
+    money3: 300,
+  });
+  kill.submitCondition = [new Condition(CONDITION_KILL_MONSTER, 'Sói hoang demo', 10, 4)];
+  const collect = new Mission(9002);
+  Object.assign(collect, {
+    name: 'Thu thập đá (demo)',
+    desc: 'Thợ rèn cần đá cường hóa (nhiệm vụ giả).',
+    simpleDesc: 'Mang 3 Đá cường hóa demo cho thợ rèn.',
+    exp: 800,
+    money2: 20,
+  });
+  collect.submitCondition = [new Condition(CONDITION_HAVE_ITEM, 'Đá cường hóa demo', 3, 0, DEMO_STONE_ID)];
+  const talk = new Mission(9003);
+  Object.assign(talk, {
+    name: 'Gặp NPC nhiệm vụ (demo)',
+    desc: 'Tìm NPC có dấu "!" trên bản đồ nhỏ (nhiệm vụ giả).',
+    simpleDesc: 'Nói chuyện với NPC nhiệm vụ.',
+    honor: 5,
+  });
+  return [kill, collect, talk];
 }
 
 /** Sprites the demo pets use (for preloading). */
@@ -77,6 +111,7 @@ export function fillDemoPlayer(p: Player): void {
   p.race = 0;
   p.countryName = 'Quốc gia demo';
   p.countryRank = 'Dân thường';
+  p.missionList = makeDemoMissions();
   // The active pet: the item in slot 1 as a MyPet, with made-up stats.
   const petItemInSlot = p.bag.getItem(SLOT_PET);
   if (petItemInSlot != null) {

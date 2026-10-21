@@ -274,6 +274,14 @@ export function drawImageBox(
   drawBoxCorner(g, x, y, w, h, set, topCorner, bottomCorner);
 }
 
+/** GameView.fillTriangle: a fan of lines from (x, y) to a base `w` wide centred on `baseX`, `h` above (dir 3: below). */
+export function fillTriangle(g: Graphics, color: number, x: number, y: number, h: number, w: number, baseX: number, dir: number): void {
+  const x0 = baseX - (w >> 1);
+  const by = dir === 3 ? y + h : y - h;
+  g.setColor(color);
+  for (let i = 0; i < w; i++) g.drawLine(x, y, i + x0, by);
+}
+
 /** Rectangle with 2px-rounded corners. */
 export function fillArcRect(g: Graphics, x: number, y: number, w: number, h: number): void {
   if (h > 4) {

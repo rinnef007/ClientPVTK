@@ -1,4 +1,5 @@
 // com.hz.actor.Player: world movement plus the data the UI screens read (bag, money, stats).
+import type { Mission } from '../core/Mission';
 import type { PlayerBag } from './Item';
 import { Model, TYPE_PLAYER } from './Model';
 
@@ -37,6 +38,8 @@ export class Player extends Model {
   countryRank = '';
   /** The active pet (Player.getPet), built from the item in equipment slot 1. */
   pet: Player | null = null;
+  /** Missions in progress (Player.missionList; null entries are empty slots). */
+  missionList: (Mission | null)[] = [];
 
   getPet(): Player | null {
     return this.pet;
