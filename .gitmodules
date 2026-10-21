@@ -1,0 +1,4 @@
+[submodule "reference/world-online"]
+	path = reference/world-online
+	url = https://github.com/treefuture/world-online.git
+	shallow = true
