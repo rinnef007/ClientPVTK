@@ -158,7 +158,7 @@ export function getPowerDesc(power: number, value: number): string | null {
 
 /**
  * Utilities.composeString: lines of [text, colour]; two short texts share a line, padded with
- * spaces to half of `width` (width -1: one per line).
+ * spaces to half of `width` (Java int division: a width of -2 or -3 gives one item per line).
  */
 export function composeString(items: [string, number | null][], width: number): string {
   let out = '';
