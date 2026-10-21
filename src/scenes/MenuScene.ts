@@ -8,6 +8,7 @@ import { SCREEN_WIDTH, type Context, type Scene } from './Scene';
 import { drawFrame, drawList, drawParagraph, listIndexAt, softKeyAt } from './ui';
 import { SplashScene } from './SplashScene';
 import { SpriteViewerScene } from './SpriteViewerScene';
+import { UIViewerScene } from './UIViewerScene';
 
 const TOP = 120;
 
@@ -20,6 +21,7 @@ export class MenuScene implements Scene {
       { label: 'Bản đồ thử', open: () => new MapScene(ctx) },
       { label: 'Thay trang phục', open: () => new DressingRoomScene(ctx) },
       { label: 'Xem sprite / animation', open: () => new SpriteViewerScene(ctx) },
+      { label: 'Xem giao diện (.ui)', open: () => new UIViewerScene(ctx) },
       { label: 'Xem tài nguyên', open: () => new AssetViewerScene(ctx) },
       { label: 'Kiểm tra mạng (mock)', open: () => new NetTestScene(ctx) },
       { label: 'Xem lại logo', open: () => new SplashScene(ctx) },

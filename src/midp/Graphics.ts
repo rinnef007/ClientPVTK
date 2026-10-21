@@ -37,8 +37,14 @@ export const FONT_SMALL = 12;
 export const FONT_MEDIUM = 16;
 export const FONT_LARGE = 20;
 
-function cssColor(rgb: number): string {
-  return '#' + (rgb & 0xffffff).toString(16).padStart(6, '0');
+/**
+ * Colour as the Android MIDP shim treats it: a zero alpha byte means opaque (plain MIDP RGB),
+ * any other alpha byte is kept (the game relies on this for translucent panels).
+ */
+function cssColor(argb: number): string {
+  const rgb = '#' + (argb & 0xffffff).toString(16).padStart(6, '0');
+  const a = (argb >>> 24) & 0xff;
+  return a === 0 ? rgb : rgb + a.toString(16).padStart(2, '0');
 }
 
 /**
@@ -66,15 +72,15 @@ export class Graphics {
 
   // --- state ---
 
-  setColor(rgb: number): void {
-    this.color = rgb & 0xffffff;
+  setColor(argb: number): void {
+    this.color = argb | 0;
     const c = cssColor(this.color);
     this.ctx.fillStyle = c;
     this.ctx.strokeStyle = c;
   }
 
   getColor(): number {
-    return this.color;
+    return this.color & 0xffffff;
   }
 
   setFontSize(px: number): void {
