@@ -31,11 +31,57 @@ export class Model implements MapModel {
   private intValue1 = 0;
   controlList: Control[] = [];
   playerSprite: GameSprite | null = null;
+  /** Shown in player lists (server data in the real game). */
+  level = 0;
+  job = 0;
+  remark = '';
+  /** 0 none, 1 team leader, 2 team member. */
+  teamRole = 0;
+  /** Model.getMode: 1 = shop (stall) mode, 50/51 fighting, 52 duel, 53 watched battle. */
+  mode = 0;
+  shopType = 0;
+  shopName = '';
+  hasPhoto = false;
 
   constructor(protected readonly type: number) {}
 
   getType(): number {
     return this.type;
+  }
+  isPlayerTeam(): boolean {
+    return this.teamRole !== 0;
+  }
+  isLeader(): boolean {
+    return this.teamRole === 1;
+  }
+  isMember(): boolean {
+    return this.teamRole === 2;
+  }
+  isShopMode(): boolean {
+    return this.mode === 1;
+  }
+  isBattleMode(): boolean {
+    return this.mode === 50 || this.mode === 51;
+  }
+  getRemark(): string {
+    return this.remark;
+  }
+  getLevel(): number {
+    return this.level;
+  }
+  getJob(): number {
+    return this.job;
+  }
+
+  /** Model.getModelString: team role, then what the model is doing ("Nghỉ" when idle). */
+  getModelString(): string {
+    let s = '';
+    if (this.isPlayerTeam()) s += this.isLeader() ? '(Đội trưởng )' : '(Đội viên)';
+    if (this.mode === 1) s += this.shopType === 1 ? 'Phụ Ma' : this.shopType === 0 ? 'B.Bán' : '';
+    else if (this.mode === 53) s += 'Xem chiến';
+    else if (this.mode === 52) s += 'Quyết đấu';
+    else if (this.mode === 50 || this.mode === 51) s += 'Chiến đấu';
+    return s.trim() ? s : 'Nghỉ';
   }
   getId(): number {
     return this.id;

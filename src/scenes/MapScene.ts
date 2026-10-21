@@ -122,6 +122,10 @@ export class MapScene implements Scene {
       const s = await dressedSprite({ ...DEFAULT_APPEARANCE, ...OTHER_PLAYERS[i] });
       const m = new Model(TYPE_PLAYER);
       m.id = 100 + i;
+      // Demo list data (the server sends these in the real game).
+      m.name = i === 0 ? 'TiểuLinh' : 'KiếmKhách';
+      m.level = i === 0 ? 31 : 27;
+      m.job = i === 0 ? 4 : 1;
       m.setPosition(i === 0 ? 12 : 30, i === 0 ? 14 : 15);
       m.setPlayerSprite(s);
       m.setAnimationByDir(false);
