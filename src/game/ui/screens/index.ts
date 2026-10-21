@@ -6,3 +6,4 @@ import './playerInfo';
 import './nearPlayer';
 import './chat';
 import './systemSet';
+import './pet';

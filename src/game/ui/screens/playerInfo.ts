@@ -5,6 +5,7 @@
 // society, photos, talents) and confirming attribute points need more data or the server.
 import { GGameBar, GGameIcon, GLabel, GLinePanel, GWindow } from '../../gui/GWidget';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX, ATTR_POINTS, Player } from '../../actor/Player';
+import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../../actor/MyPet';
 import * as GameWorld from '../../main/GameWorld';
 import { GameSprite } from '../../sprite/GameSprite';
 import { UIHandler, alertMessage, type UIListener } from '../UIHandler';
@@ -48,7 +49,7 @@ const ATT_ROWS: Record<number, [string, keyof Pick<Player, 'str' | 'con' | 'agi'
 };
 
 /** PlayerInfoUIAction: remembers the attributes as opened so +/- points can be undone. */
-class PlayerInfoUIAction implements UIListener {
+export class PlayerInfoUIAction implements UIListener {
   baseAtt: number[];
   buffAtt: number[];
   private readonly baseValues: [number, number][];
@@ -142,11 +143,11 @@ function setDiffText(l: GLabel | null, now: number, base: number, color: number)
 }
 
 /** The base tab: name / level / job, HP MP EXP bars, the doll and the five attribute rows. */
-export function updatePlayerBaseUI(ui: UIHandler, p: Player, full: boolean, addPanels: boolean): void {
+export function updatePlayerBaseUI(ui: UIHandler, p: Player, full: boolean, addPanels: boolean, isPet = false): void {
   const action = ui.listener instanceof PlayerInfoUIAction ? ui.listener : null;
   if (addPanels) {
     const frame = ui.getFrameContainer();
-    for (const ev of [3, 4, 5]) {
+    for (const ev of isPet ? [55, 58, 59] : [3, 4, 5]) {
       const w = ui.getGWidgetByEventType(ev);
       if (frame && w) frame.add(w);
     }
@@ -168,6 +169,18 @@ export function updatePlayerBaseUI(ui: UIHandler, p: Player, full: boolean, addP
     lbl(ui, 13)?.setText(`${p.get(ATTR_EXP)}/${p.get(ATTR_EXP_MAX)}`);
     bar(ui, 12)?.setValue(p.get(ATTR_EXP_MAX), p.get(ATTR_EXP));
     lbl(ui, 15)?.setText(getJobString(p.job));
+  }
+  if (isPet) {
+    if (full && p instanceof MyPet) updatePetBaseLabels(ui, p);
+    // Pets show plain "base(+bonus)" labels 24..28 instead of the point-assignment rows.
+    for (const [ev, [, field, id]] of Object.entries(ATT_ROWS)) lbl(ui, Number(ev))?.setText(Player.getAttDesc(p[field], p.get(id)));
+    if (full) {
+      const doll = ui.getGWidgetByEventType(7);
+      if (doll instanceof GGameIcon) doll.setSprite(GameSprite.cloneSprite(p.getPlayerSprite()));
+    }
+    return;
+  }
+  if (full) {
     lbl(ui, 14)?.setText(getRaceString(p.race));
     lbl(ui, 16)?.setText(p.countryRank);
     lbl(ui, 17)?.setText(p.countryName);
@@ -197,6 +210,23 @@ export function updatePlayerBaseUI(ui: UIHandler, p: Player, full: boolean, addP
     const doll = ui.getGWidgetByEventType(7);
     if (doll instanceof GGameIcon) doll.setSprite(GameSprite.cloneSprite(p.getPlayerSprite()));
   }
+}
+
+/** Define.gradeText (getGradeString(grade, true) says "Ưu tú" for grade 1). */
+const GRADE_TEXT = ['Thường', 'Tinh chế', 'Hiếm có', 'Sử thi', 'T.thuyết', 'Thần thoại'];
+
+/** The pet part of updatePlayerBaseUI: growth level, grade, age and the cp/grow/compre bars. */
+function updatePetBaseLabels(ui: UIHandler, pet: MyPet): void {
+  lbl(ui, 62)?.setText(`${pet.get(ATTR_PET_GROW_LEVEL)}`);
+  const g = pet.get(ATTR_PET_GRADE);
+  lbl(ui, 64)?.setText(g < 0 || g >= GRADE_TEXT.length ? 'Tất cả' : g === 1 ? 'Ưu tú' : GRADE_TEXT[g]);
+  const other = ui.getSubType() === 4 && pet.owner !== GameWorld.myPlayer;
+  lbl(ui, 66)?.setText(`${other ? pet.petmaxage : pet.petAge}`);
+  bar(ui, 6)?.setValue(10, pet.cp);
+  bar(ui, 80)?.setValue(100, pet.grow);
+  bar(ui, 81)?.setValue(100, pet.compre);
+  lbl(ui, 83)?.setShow(false); // "Ngẫu nhiên" only for unknown growth in the composite view
+  lbl(ui, 84)?.setShow(false);
 }
 
 /** Tab labels from Player.getPlayTabStr; an unknown tab falls back to the first one. */

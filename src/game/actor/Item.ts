@@ -2,6 +2,9 @@
 // image set 1 (bagIcon), grade (back plate), count, stars, suit id and expiry. Real items come
 // from the server; the test map builds a few by hand.
 export const ITEM_ID_QUICK_FILL_HP = -10000;
+export const ITEM_TYPE_PET = 32;
+/** Equipment slot of the active pet. */
+export const SLOT_PET = 1;
 
 export class Item {
   id = 0;
@@ -20,8 +23,14 @@ export class Item {
   isUpgradeItem = false;
   /** Free text the item info box shows (stats in the real game). */
   description = '';
-  /** Item.type: 27/28/31 are usable from the world item list (isCanUse(1)). */
+  /** Item.type: 27/28/31 are usable from the world item list (isCanUse(1)); 32 is a pet. */
   type = 0;
+  /** Bag slot the item sits in (set by PlayerBag.setItem); slot 1 holds the active pet. */
+  slotPos = -1;
+  /** Required level; a pet item's level. */
+  reqLv = 0;
+  /** Appearance long (a pet item's sprite icon). */
+  icon = 0n;
   info = '';
 
   /** Item.getPowerDesc: the attribute text built from server data; the demo text here. */
@@ -67,8 +76,17 @@ export class PlayerBag {
   }
 
   setItem(slot: number, item: Item | null): void {
-    if (item == null) this.items.delete(slot);
-    else this.items.set(slot, item);
+    if (item == null) {
+      this.items.delete(slot);
+      return;
+    }
+    item.slotPos = slot;
+    this.items.set(slot, item);
+  }
+
+  /** All items, equipment slots first (PlayerBag.store up to bagEnd). */
+  allItems(): Item[] {
+    return [...this.items.entries()].sort((a, b) => a[0] - b[0]).map(([, it]) => it);
   }
 
   /** How many equipped items (slots 0..17) belong to a suit. */

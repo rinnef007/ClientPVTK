@@ -35,6 +35,12 @@ export class Player extends Model {
   level2 = 0;
   countryName = '';
   countryRank = '';
+  /** The active pet (Player.getPet), built from the item in equipment slot 1. */
+  pet: Player | null = null;
+
+  getPet(): Player | null {
+    return this.pet;
+  }
   /** Attribute values by id (sent by the server in the real game). */
   readonly values = new Map<number, number>();
 

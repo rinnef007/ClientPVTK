@@ -103,11 +103,8 @@ const MENU: Record<number, [string, number?] | (() => void)> = {
   944: ['playerInfo', -1], // doWorldTouristFiveLevel (non-tourist path)
   11210: ['nearPlayer', 0], // players around ("X.Quanh")
   938: ['nearPlayer', 1], // team icon
-  // createMercenaryListUI(me, 2): pets come from bag pet items and mercenaries from the server;
-  // with neither, Java shows this alert.
-  11203: () => alertMessage('Bạn chưa có trân thú hoặc dụng binh!', 'D.sách trân thú và dung binh '),
-  // createPetInfoUI(GameWorld.getPlayerPet()): the HUD pet is demo data, not a MyPet.
-  946: () => alertMessage(STR_NEED_SERVER),
+  11203: ['mercenaryList', 2], // pets ("Pet"): bag pet items; mercenaries need the server
+  946: ['petInfo'], // HUD pet portrait: the active pet's info
   11202: ['systemSet'], // settings ("H.Thống")
   // createPlayerEventUI lists server events (GameWorld.refreshPlayerEvent): not ported.
   941: () => alertMessage(STR_NEED_SERVER),

@@ -18,7 +18,8 @@ import { isMotion, uiClock, uiFont, uiScreen } from '../game/gui/GWidget';
 import { TYPE_ALERT, UIHandler, preloadUI } from '../game/ui/UIHandler';
 import '../game/ui/screens';
 import { setOnQuitGame } from '../game/ui/UIAction';
-import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles } from '../game/ui/WorldHud';
+import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles, type HudPetInfo } from '../game/ui/WorldHud';
+import { MyPet } from '../game/actor/MyPet';
 import * as WorldMessage from '../game/main/WorldMessage';
 import { fillDemoPlayer } from '../game/demo/DemoData';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX } from '../game/actor/Player';
@@ -35,7 +36,16 @@ const HUD_EXTRA_SETS = [4, 1002, 238, 216];
 /** Made-up numbers for the HUD: there is no server to send the real player data. */
 /** Made-up combat power (Player.combatPoint comes from the server). */
 const DEMO_COMBAT_POINT = 12345;
-const DEMO_PET = { level: 18, hp: 450, maxHp: 600, mp: 120, maxMp: 300, exp: 700, maxExp: 2000, petIcon: 501 };
+function hudPet(p: Player | null): HudPetInfo | null {
+  if (!(p instanceof MyPet)) return null;
+  return {
+    level: p.getLevel(), hp: p.get(ATTR_HP), maxHp: p.get(ATTR_HP_MAX), mp: p.get(ATTR_MP), maxMp: p.get(ATTR_MP_MAX),
+    exp: p.get(ATTR_EXP), maxExp: p.get(ATTR_EXP_MAX), petIcon: p.petHeadIcon,
+  };
+}
+
+/** Portrait of the demo pet (common/PetIcon/tx_501.png). */
+const DEMO_PET_HEAD = 501;
 /** Made-up chat lines (channel, sender, female, text) standing in for server chat messages. */
 const DEMO_CHAT: [number, string, boolean, string][] = [
   [CHANNEL_WORLD, 'KiếmKhách', false, 'Có ai đi phụ bản không?'],
@@ -88,7 +98,7 @@ export class MapScene implements Scene {
   private async loadHud(): Promise<WorldHud | null> {
     const fs = getAssetFS();
     await preloadUI(UI_WORLD_PANEL, TYPE_ALERT);
-    await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET.petIcon)]);
+    await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET_HEAD)]);
     await Promise.all([SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
     initUIEnvironment();
     return WorldHud.create();
@@ -174,7 +184,7 @@ export class MapScene implements Scene {
         combatPoint: DEMO_COMBAT_POINT,
         value118: 0,
         level2: me.level2,
-        pet: DEMO_PET,
+        pet: hudPet(me.getPet()),
         headSprite: await resolveSprite(() => createHeadSpriteByIcon(icon1)),
       });
       const mini = hud.get(EVENT_ALL_INFO_SMALL_MAP);

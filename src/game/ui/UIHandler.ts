@@ -110,6 +110,10 @@ export class UIHandler {
     return w instanceof GWindow ? w : null;
   }
 
+  getLibGWidget(i: number): GWidget | null {
+    return this.gwidetLib[i] ?? null;
+  }
+
   getFrameContainer(): GContainer | null {
     return this.uiFrame;
   }
