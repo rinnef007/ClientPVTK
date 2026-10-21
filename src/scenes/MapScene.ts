@@ -149,6 +149,7 @@ export class MapScene implements Scene {
     for (let i = 0; i < spots.length; i++) {
       const n = new NPC();
       n.id = 200 + i;
+      n.name = `NPC demo ${i + 1}`; // made-up names (NPC data comes from the server)
       n.setSource(spots[i][0], spots[i][1], 3, 2);
       n.setPlayerSprite(GameSprite.createSprite(PET_SPRITES[i % PET_SPRITES.length]));
       n.setAnimationByDir(false);
