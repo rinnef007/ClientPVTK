@@ -48,6 +48,8 @@ export class Player extends Model {
   /** Auto-battle skill slots (skill ids, 0 = empty) and the auto-cast active skill. */
   autoSkillID: number[] = [];
   autoSkillID_Initiative = 0;
+  /** Model.setting: option bits (team requests, display…), see screens/setting.ts. */
+  setting = 0;
   /** Society tab values (server data): arena / sky-arena points, combat power, enchant points, god EXP. */
   arenaPoint = 0;
   skyarenaPoint = 0;

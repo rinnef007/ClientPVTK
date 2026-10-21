@@ -103,7 +103,9 @@ const MENU: Record<number, [string, number?] | (() => void)> = {
   938: ['nearPlayer', 1], // team icon
   11203: ['mercenaryList', 2], // pets ("Pet"): bag pet items; mercenaries need the server
   946: ['petInfo'], // HUD pet portrait: the active pet's info
-  11202: ['systemSet'], // settings ("H.Thống")
+  11202: ['systemSet'], // system menu ("H.Thống")
+  11256: ['setting'], // "Cài đặt": createSettingUI(myPlayer)
+  11229: ['setting'],
   // createPlayerEventUI lists server events (GameWorld.refreshPlayerEvent): not ported.
   941: () => alertMessage(STR_NEED_SERVER),
   11219: () => alertMessage('Bạn chưa kết bạn'), // GameWorld.isShowRelation is false without server data

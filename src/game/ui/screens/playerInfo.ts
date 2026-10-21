@@ -88,10 +88,9 @@ export class PlayerInfoUIAction implements UIListener {
 
   processLayerAction(ui: UIHandler, action: number): void {
     if (action === 14) return this.cancelChangeAttValue();
-    if (action === 1) {
-      if (!this.doChangeAttAction()) UIHandler.deleteUI(ui);
-      return;
-    }
+    // Java: confirm the changed points with the server (doChangeAttAction) or close. Offline the
+    // points are undone and the screen closes, so "back" never gets stuck.
+    if (action === 1) return this.processLayerClose(ui);
     const tabs = ui.getGWindowByEventType(2);
     const tab = (tabs?.focusWidget?.getObj() as number | null) ?? TAB_BASE;
     if (tab === TAB_BASE && action === 0) this.processBaseAction(ui);

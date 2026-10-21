@@ -300,6 +300,7 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
   - **Dấu nhiệm vụ trên bản đồ nhỏ** (`Mission.newRadarMapID/Gx/Gy`, frame 6 nhấp nháy) và dấu NPC (`icon2`, `status` bit 32) đã port; nhiệm vụ trong bản đồ thử là giả.
   - **Tin nhắn thế giới** (`WorldMessage`, `ChatMsg.getFullText/parse`, `PowerMsg`): dòng chat hiện 3 giây ở vùng 948, thông báo chạy chữ, hộp nhắc ở vùng 951, tin "điểm" ở vùng 950. Tin trong bản đồ thử là giả; chưa port: lịch sử theo kênh, cửa sổ chat, lì xì, kiểm tra đấu trường/ẩn chat, VIP QQ.
   - Chưa port: quảng cáo, các chế độ ẩn bản đồ nhỏ/hiện quái, và hành động của từng nút.
+- **Đóng màn:** như `UIHandler.handleSpecificUIKey`, các loại UI 2, 3, 7, 14, 21, 37, 44, 52, 54, 62, 63, 66, 67, 74, 79, 88, 92, 94–98, 101, 103, 104, 106, 117, 130, 151, 160, 173, 205, 213–217 nhận nút đóng dưới dạng hành động 1 (màn tự quyết định đóng/lưu); màn nhân vật offline hoàn tác điểm cộng chưa xác nhận rồi đóng.
 - **Chồng màn và nút HUD (bước 4):** `game/ui/UIHandler.ts` (danh sách UI mở, bảng widget theo mã sự kiện kể cả thư viện và bản sao ADDLIB, `drawAll`, hộp thoại `alertMessage` ui/7), `game/ui/UIAction.ts` (điều phối theo loại UI, `processWorldPanelLayer`: thu gọn thanh nút 18/19, `doMenuButton` cho mọi nút HUD), `game/ui/UIObject.ts` (phân trang dữ liệu trên máy). Mỗi màn nằm trong `game/ui/screens/`:
 
   | Nút HUD | Màn | Trạng thái |
@@ -310,6 +311,7 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
   | X.Quanh (11210) | ui/73 người xung quanh | Tab Quanh (phân trang 8 dòng) và Đội (trống offline) |
   | Chat (11205) | ui/64 lịch sử chat | Tab kênh, lịch sử theo kênh, tin mới chèn trực tiếp. Gõ tin cần server |
   | H.Thống (11202) | ui/87 menu hệ thống | Đủ mục; "Rời game" về menu chính |
+  | Cài đặt (11256, trong H.Thống) | ui/88 (+ widget của ui/108) | Các hàng nút theo bit `Model.setting` (xin vào đội, mời đội, bái sư, tăng tốc, trợ thủ, số dòng chat, tên, bản đồ nhỏ, người chơi), nút "?" giải thích. Java xác nhận rồi gửi server; offline chỉ lưu trên người chơi cục bộ, các tùy chọn chưa tác động lên hiển thị |
   | Pet (11203) | ui/61 danh sách pet | Pet lấy từ vật phẩm pet trong túi/ô trang bị (`MyPet.doGetBagPetItem`): ảnh, tên theo màu phẩm chất, cấp, dấu "Đang chiến", các nút. Tab dung binh trống (cần server). "C.Tiết" của pet đang chiến mở ui/52; pet khác và các nút Chiến/Nghỉ/P.sinh/Sửa/P.Ấn cần server |
   | Chân dung pet trên HUD (946) | ui/52 thông tin pet | Tab Pet: tên, cấp, cấp trưởng thành, thanh điểm, HP/MP/EXP, thuộc tính, phẩm, tuổi, sao trưởng thành/lĩnh ngộ, hàng nút; "G.Thích" hiện giải thích. Tab Th.Tính và Skill dùng chung với màn nhân vật (trạng thái bẩm sinh hiện "Không"). Các nút thao tác cần server |
   | N.vụ (11207) | ui/37 danh sách nhiệm vụ, ui/46 chi tiết | Tab N.Vụ: tiêu đề "Nhiệm vụ chính", tên nhiệm vụ kèm "[Xong]" khi đạt mục tiêu; chọn dòng hiện khung mục tiêu (`MessageFrame`, tự ẩn sau 120 tick); "Chi tiết" mở ui/46 (mô tả, mục tiêu, phần thưởng exp/Lá/Bạc/Cống hiến). Chỉ port điều kiện "Hủy diệt" (2) và "Nhận được" (7). Tab H.Động/Tăng/Sôi Nổi, nhiệm vụ khiêu chiến, "Dò đường", "Hủy" cần server |

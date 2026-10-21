@@ -21,6 +21,12 @@ export interface UIListener {
   processLayerClose(ui: UIHandler): void;
 }
 
+/** UIHandler.handleSpecificUIKey: UI types whose close key becomes notifyLayerAction(1). */
+const CLOSE_AS_ACTION = new Set([
+  2, 3, 62, 63, 66, 67, 103, 104, 7, 14, 21, 37, 44, 52, 54, 74, 79, 88, 92, 101, 106, 117, 130, 151, 160, 173, 205,
+  94, 95, 96, 97, 98, 213, 214, 215, 216, 217,
+]);
+
 export const STATUS_CATCH_INPUT = 1;
 export const STATUS_CLOSED = 2;
 
@@ -86,7 +92,8 @@ export class UIHandler {
       ui.uiFrame = root;
       ui.input = new UIInput(root);
       ui.input.onAction = () => ui.notifyLayerAction(0);
-      ui.input.onClose = () => ui.notifyLayerClose();
+      // handleSpecificUIKey: these screens get the close key as layer action 1 (their own "back").
+      ui.input.onClose = () => (CLOSE_AS_ACTION.has(type) ? ui.notifyLayerAction(1) : ui.notifyLayerClose());
       ui.input.afterKey = (key, target) => {
         for (const hook of UIHandler.updateUIHooks) hook(ui, key, target);
         // updateKeyUpDown
