@@ -89,3 +89,70 @@ export class ChatMsg {
     this.parseTextMsg = null;
   }
 }
+
+// --- chat history (ChatMsg.addChatMsg / addChatMsgVector / getChatMsgVector / getChatStr) ---
+
+export const allChatMsg: ChatMsg[] = [];
+export const worldChatMsg: ChatMsg[] = [];
+export const countryChatMsg: ChatMsg[] = [];
+export const privateChatMsg: ChatMsg[] = [];
+export const unionChatMsg: ChatMsg[] = [];
+/** Bit per channel that has had messages (decides which chat tabs exist). */
+let tabStatus = 0;
+/** Called after a message is filed (the open chat window adds it live). */
+export const chatListeners: ((m: ChatMsg) => void)[] = [];
+/** WorldMessage.addMsg, set by WorldMessage (avoids an import cycle). */
+export let showInWorld: (m: ChatMsg) => void = () => {};
+export function setShowInWorld(fn: (m: ChatMsg) => void): void {
+  showInWorld = fn;
+}
+
+function addChatMsgVector(list: ChatMsg[], max: number, m: ChatMsg): void {
+  while (list.length >= max) list.splice(max - 1, 1);
+  list.unshift(m);
+}
+
+export function setTabStatus(on: boolean, channel: number): void {
+  tabStatus = on ? tabStatus | (1 << channel) : tabStatus & ~(1 << channel);
+}
+
+export function isTabStatus(channel: number): boolean {
+  return (tabStatus & (1 << channel)) !== 0;
+}
+
+export function addChatMsg(m: ChatMsg | null, toWorld = true): void {
+  if (m == null) return;
+  if (toWorld) showInWorld(m);
+  addChatMsgVector(allChatMsg, 40, m);
+  setTabStatus(true, m.channel);
+  for (const fn of chatListeners) fn(m);
+  if (m.channel === CHANNEL_COUNTRY) addChatMsgVector(countryChatMsg, 10, m);
+  else if (m.channel === CHANNEL_PRIVATE) addChatMsgVector(privateChatMsg, 10, m);
+  else if (m.channel === CHANNEL_WORLD) addChatMsgVector(worldChatMsg, 20, m);
+  else if (m.channel === CHANNEL_UNION) addChatMsgVector(unionChatMsg, 10, m);
+}
+
+export function getChatMsgVector(channel: number): ChatMsg[] {
+  if (channel === CHANNEL_COUNTRY) return countryChatMsg;
+  if (channel === CHANNEL_PRIVATE) return privateChatMsg;
+  if (channel === CHANNEL_WORLD) return worldChatMsg;
+  if (channel === CHANNEL_UNION) return unionChatMsg;
+  return allChatMsg;
+}
+
+/** Chat tabs: always "Chung" (10, all), "Liên SV", "T.Giới" and "System"; others once used. */
+export function getChatStr(): [string, number][] {
+  const tabs: [string, number][] = [['Chung', 10], ['Liên SV', 8], ['T.Giới', 1]];
+  if (isTabStatus(2)) tabs.push(['K.Vực', 2]);
+  if (isTabStatus(3)) tabs.push(['Quốc gia', 3]);
+  if (isTabStatus(4)) tabs.push(['Đội', 4]);
+  if (isTabStatus(5)) tabs.push(['PM', 5]);
+  if (isTabStatus(7)) tabs.push(['Liên minh', 7]);
+  tabs.push(['System', 6]);
+  return tabs;
+}
+
+export function clearChatHistory(): void {
+  for (const l of [allChatMsg, worldChatMsg, countryChatMsg, privateChatMsg, unionChatMsg]) l.length = 0;
+  tabStatus = 0;
+}

@@ -21,7 +21,7 @@ import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles } from
 import * as WorldMessage from '../game/main/WorldMessage';
 import { fillDemoPlayer } from '../game/demo/DemoData';
 import { msgEnv } from '../game/core/PowerMsg';
-import { CHANNEL_AREA, CHANNEL_SYSTEM, CHANNEL_TEAM, CHANNEL_WORLD, ChatMsg } from '../game/main/ChatMsg';
+import { CHANNEL_AREA, CHANNEL_SYSTEM, CHANNEL_TEAM, CHANNEL_WORLD, ChatMsg, addChatMsg, clearChatHistory } from '../game/main/ChatMsg';
 import { currentAppearance } from './DressingRoomScene';
 import { MenuScene } from './MenuScene';
 import { COLOR_TEXT, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
@@ -165,6 +165,7 @@ export class MapScene implements Scene {
       GameMap.initSmallMapWidth(mini, SCREEN_WIDTH, map);
       Object.assign(msgEnv, { width: uiScreen.width, height: uiScreen.height, font: uiFont });
       WorldMessage.clearAll();
+      clearChatHistory();
       WorldMessage.initWorldShowLocation((ev) => hud.get(ev), true);
       WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
       WorldMessage.addNoticeMsg('Chào mừng đến bản đồ thử (offline). Mọi số liệu và tin nhắn ở đây đều là dữ liệu giả.');
@@ -195,7 +196,7 @@ export class MapScene implements Scene {
       const [ch, who, female, text] = DEMO_CHAT[(uiClock.tick / 80) % DEMO_CHAT.length];
       const m = new ChatMsg(ch, ch === CHANNEL_SYSTEM ? -1 : 9, who, text, 0);
       if (female) m.flag |= 16;
-      WorldMessage.addMsg(m);
+      addChatMsg(m);
     }
     // Full repaint of the back buffer, e.g. to compare against the incremental scroll path.
     if (key === KEY_POUND) this.map?.setTag(TAG_FORCE_PAINT, true);
@@ -258,6 +259,7 @@ export class MapScene implements Scene {
     GameWorld.missionRadar.mapId = -1;
     UIHandler.closeAllUI();
     WorldMessage.clearAll();
+    clearChatHistory();
     GameWorld.otherModels.clear();
     this.ctx.go(new MenuScene(this.ctx));
   }

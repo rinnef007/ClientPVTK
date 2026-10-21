@@ -4,3 +4,4 @@ import './equip';
 import './itemList';
 import './playerInfo';
 import './nearPlayer';
+import './chat';

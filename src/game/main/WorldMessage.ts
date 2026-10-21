@@ -5,7 +5,7 @@ import type { Graphics } from '../../midp/Graphics';
 import { isNullText } from '../common/Tool';
 import { PowerMsg, msgEnv } from '../core/PowerMsg';
 import { fillAlphaRect } from './GameView';
-import { CHANNEL_SYSTEM, ChatMsg } from './ChatMsg';
+import { CHANNEL_SYSTEM, ChatMsg, addChatMsg, setShowInWorld } from './ChatMsg';
 
 const BG_COLOR_WORLD = -1424870314; // 0xAB1D2B56
 const TEXT_COLOR = 16709814;
@@ -79,6 +79,8 @@ export function initWorldShowLocation(find: ((ev: number) => Area | null) | null
   setChatLocationParam(d.x, d.y, d.w, d.h);
 }
 
+setShowInWorld((m) => addMsg(m));
+
 export function addMsg(m: ChatMsg | null): void {
   if (m == null) return;
   if (chatMessages.length >= WORLD_MESSAGE_MAX_NUM) {
@@ -93,9 +95,11 @@ export function addSystemChat(text: string, channel = CHANNEL_SYSTEM): void {
   addMsg(new ChatMsg(channel, -1, '', text, 0));
 }
 
-/** The scrolling banner (Java also files it in the system chat history, not ported). */
+/** The scrolling banner; the text is also filed in the system chat history. */
 export function addNoticeMsg(text: string): void {
-  if (!isNullText(text)) noticeMessages.push(PowerMsg.createPowerMsgNotice(text));
+  if (isNullText(text)) return;
+  noticeMessages.push(PowerMsg.createPowerMsgNotice(text));
+  addChatMsg(new ChatMsg(CHANNEL_SYSTEM, -1, '', text, 0), false);
 }
 
 export function addPromptMsg(text: string): void {

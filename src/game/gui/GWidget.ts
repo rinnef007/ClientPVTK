@@ -336,6 +336,11 @@ export class GContainer extends GWidget {
     this.children.push(w);
   }
 
+  insert(w: GWidget, index: number): void {
+    w.parent = this;
+    this.children.splice(index, 0, w);
+  }
+
   remove(w: GWidget): void {
     const i = this.children.indexOf(w);
     if (i >= 0) this.children.splice(i, 1);
