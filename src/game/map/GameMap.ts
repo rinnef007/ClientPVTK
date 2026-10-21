@@ -45,6 +45,8 @@ export interface SmallMapInfo {
   radar?: { mapId: number; gx: number; gy: number } | null;
   /** GameCanvas.isMotion: the radar mark blinks with it. */
   motion?: number;
+  /** GameMap.getSettingMap: 0 simple (no monsters), 1 detailed (monsters too), 2 hidden. */
+  settingMap?: number;
 }
 
 export class GameMap {
@@ -467,11 +469,10 @@ export class GameMap {
   /**
    * Mini map scrolled to keep the player centred, NPC markers from image set 4 (GameView.mapSet),
    * the player arrow, the cell coordinates in set 1002 above it and the map name below.
-   * Not ported: the "hide mini map" / "show monsters" player settings.
    */
   private drawSmallMap(g: Graphics): void {
-    const { me, npcs, radar, motion } = GameMap.smallMapInfo();
-    if (me == null) return;
+    const { me, npcs, radar, motion, settingMap = 0 } = GameMap.smallMapInfo();
+    if (me == null || settingMap === 2) return;
     const set = getImageSet(4);
     const mx = GameMap.MAP_X;
     const my = GameMap.MAP_Y;
@@ -501,7 +502,10 @@ export class GameMap {
         const x = ox + n.gx * 2;
         const y = oy + n.gy * 2;
         if (!rectIn(mx, my, bw, bh, x, y)) continue;
-        if (n.npcType === 1) continue; // monsters only show with the "show monsters" setting
+        if (n.npcType === 1) {
+          if (settingMap === 1) set.drawFrame(g, 3, x, y, 0, 3); // monsters: "C.tiết" only
+          continue;
+        }
         if (n.npcType === 3 || n.npcType === 8) {
           set.drawFrame(g, 4, x, y, 0, 3);
           continue;

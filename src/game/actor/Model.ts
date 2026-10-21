@@ -39,6 +39,8 @@ export class Model implements MapModel {
   remark = '';
   /** 0 none, 1 team leader, 2 team member. */
   teamRole = 0;
+  /** Model.getLeaderID: the team leader's id (0 = no team; server data). */
+  leaderID = 0;
   /** Model.getMode: 1 = shop (stall) mode, 50/51 fighting, 52 duel, 53 watched battle. */
   mode = 0;
   shopType = 0;

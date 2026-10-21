@@ -6,6 +6,7 @@ import { Player } from '../game/actor/Player';
 import { Model, TYPE_PLAYER } from '../game/actor/Model';
 import { Control } from '../game/main/Control';
 import * as GameWorld from '../game/main/GameWorld';
+import { MAP_MODEL_IMAGES } from '../game/main/MapModels';
 import * as WorldPanel from '../game/main/WorldPanel';
 import { GameMap, TAG_FORCE_PAINT, TAG_MAP_IMG_OFF } from '../game/map/GameMap';
 import { TEST_MAP_SPRITES, buildTestMap } from '../game/map/TestMap';
@@ -96,7 +97,7 @@ export class MapScene implements Scene {
   private async loadHud(): Promise<WorldHud | null> {
     const fs = getAssetFS();
     await preloadUI(UI_WORLD_PANEL, TYPE_ALERT);
-    await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET_HEAD)]);
+    await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET_HEAD), ...MAP_MODEL_IMAGES]);
     await Promise.all([SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
     initUIEnvironment();
     return WorldHud.create();

@@ -41,9 +41,14 @@ export class PlayerLayer extends MapLayer {
     let endRow = m.mapEndGy + DRAW_GRID_Y_OFFSET;
     if (endRow >= m.mapRows) endRow = m.mapRows - 1;
     const top = withTop ? m.topImgHeight : 0;
+    if (withTop) PlayerLayer.rowDrawer?.begin();
     for (let row = m.mapStartGy; row <= endRow; row++) {
       this.drawRowObjecct(g, row, ox, oy, w, h, top);
       if (withTop && row < m.mapEndGy + 1) {
+        if (PlayerLayer.rowDrawer != null) {
+          PlayerLayer.rowDrawer.row(g, row, ox, oy, m.mapStartGx, m.mapEndGx);
+          continue;
+        }
         for (const model of m.models) {
           const gx = model.getGx();
           if (gx >= m.mapStartGx && gx <= m.mapEndGx && model.getGy() === row) model.drawOnMap(g, ox, oy);
@@ -51,6 +56,12 @@ export class PlayerLayer extends MapLayer {
       }
     }
   }
+
+  /**
+   * Draws the models standing on a row (GameWorld's players and NPCs, see main/MapModels); set by
+   * GameWorld so the map does not depend on the actor classes. Without it, map.models is drawn.
+   */
+  static rowDrawer: { begin(): void; row(g: Graphics, row: number, ox: number, oy: number, startGx: number, endGx: number): void } | null = null;
 
   /** (sic) name kept from Java. Image entries are anchored bottom-centre (33). */
   private drawRowObjecct(g: Graphics, row: number, ox: number, oy: number, w: number, h: number, top: number): void {

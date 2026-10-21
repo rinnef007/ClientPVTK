@@ -66,6 +66,14 @@ export function drawBorderString(g: Graphics, border: number, color: number, s: 
   g.drawString(s, x, y, anchor);
 }
 
+/** GameView.drawSimpleBorderString: a one-pixel shadow down-right. */
+export function drawSimpleBorderString(g: Graphics, border: number, color: number, s: string, x: number, y: number, anchor: number): void {
+  g.setColor(border);
+  g.drawString(s, x + 1, y + 1, anchor);
+  g.setColor(color);
+  g.drawString(s, x, y, anchor);
+}
+
 /** Vertical gradient in `steps` bands from c0 to c1. */
 export function drawShadeBoxColors(g: Graphics, x: number, y: number, w: number, h: number, c0: number, c1: number, steps: number): void {
   if (h === 0 || steps === 0) return;

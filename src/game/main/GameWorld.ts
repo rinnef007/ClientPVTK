@@ -4,6 +4,8 @@ import type { Model } from '../actor/Model';
 import type { NPC } from '../actor/NPC';
 import type { Player } from '../actor/Player';
 import { GameMap } from '../map/GameMap';
+import { PlayerLayer } from '../map/PlayerLayer';
+import { drawModelRow } from './MapModels';
 
 export let gameMap: GameMap | null = null;
 export let myPlayer: Player | null = null;
@@ -21,13 +23,24 @@ export function setMotion(fn: () => number): void {
   motion = fn;
 }
 
+/** Other players drawn so far in this frame (PlayerLayer.draw shows at most 20). */
+const shownPlayers = { n: 0 };
+
 export function setGameMap(m: GameMap | null): void {
   gameMap = m;
+  PlayerLayer.rowDrawer = {
+    begin: () => {
+      shownPlayers.n = 0;
+    },
+    row: (g, row, ox, oy, startGx, endGx) => drawModelRow(g, row, ox, oy, startGx, endGx, otherModels.values(), npcList, myPlayer, shownPlayers),
+  };
   GameMap.npcAt = (gx, gy) => getNPC(gx, gy) != null;
   GameMap.smallMapInfo = () => ({
     me: myPlayer == null ? null : { gx: myPlayer.getGx(), gy: myPlayer.getGy(), dir: myPlayer.getDir() },
     radar: missionRadar,
     motion: motion(),
+    // GameMap.getSettingMap: bit 524288 ("Đóng") hides it, 262144 ("C.tiết") adds monsters.
+    settingMap: myPlayer == null || (myPlayer.setting & 524288) !== 0 ? 2 : (myPlayer.setting & 262144) !== 0 ? 1 : 0,
     npcs: npcList.map((n) => ({
       gx: n.getGx(), gy: n.getGy(), npcType: n.npcType, sign: n.getSign(), jumpIcon: n.isJumpIcon(), visible: n.isVisible(),
     })),
