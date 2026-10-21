@@ -290,7 +290,8 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
 - `GGameIcon` đã vẽ được: sprite id > 0 tạo từ `.spr`, id 0 = bản sao nhân vật của người chơi (trong trình xem lấy từ phòng thay đồ, thay cho `GameWorld.myPlayer`).
 - `GTextArea` + `PowerString` (`game/string/PowerString.ts`): đã port tách dòng `Utilities.splitString`, mã màu `/cRRGGBB…/p` (lồng nhau, `{}` gạch chân), icon `/i`, phân trang và thanh cuộn. Icon mặt cười `/f` (`GameView.faceImage`) và nền ô vật phẩm (`GameView.backIcons`) chưa nạp nên chưa hiện.
 - `GScrollBar` chỉ hiện khi nội dung tràn (như Java); phần lớn danh sách được UIHandler điền lúc chạy nên trong trình xem thường chưa thấy thanh cuộn.
-- Nhãn có icon đứng trước chữ (`iconValue`) và chữ chạy ngang khi quá dài (marquee) chưa port, nên vài nhãn còn bị cắt chữ.
+- Chữ chạy ngang của `GLabel` (marquee, bit 2/8/16) đã port. Theo đúng Java, chỉ chạy khi chữ dài hơn ô **lúc `setText`/`setBounds`**. Trong file `.ui`, kích thước thường được đặt trước chữ nên các nhãn dịch sang tiếng Việt bị dài hơn vẫn bị cắt cho đến khi UIHandler gọi `setText` lúc chạy (chưa port).
+- Icon đứng trước chữ (`iconValue`: VIP, tiền, GM…) chỉ được UIHandler đặt lúc chạy; chưa port.
 - Focus, phím, chạm, cuộn và hành vi riêng của từng màn (`UIHandler`, `UIAction`: 45k + 12k dòng) chưa port. Hiện chỉ **hiển thị**, chưa tương tác.
 - Font hệ thống: dùng Roboto/Arial để gần với Android, nhưng độ rộng chữ vẫn có thể lệch vài pixel.
 - `GameView.initImage` (các bộ ảnh đặc biệt như tiền, icon VIP) chưa port; mọi id đều nạp từ `common/<id>`.

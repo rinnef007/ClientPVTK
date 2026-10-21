@@ -871,6 +871,12 @@ export class GLabel extends GWidget {
   bgFrameSelectIndex = 0;
   bgAnchor = 0;
   underLineColorTable: number[] | null = null;
+  /** Marquee state: text x shift, pixels per step and ticks between steps. */
+  scrollOffset = 0;
+  speed = 3;
+  speedDis = 1;
+  speedCount = 0;
+  private lastTick = uiClock.tick;
 
   /** BACK_LABEL: colour table plus corner frames. */
   setBack(colors: number[], setId: number, top: number, bottom: number): void {
@@ -919,6 +925,54 @@ export class GLabel extends GWidget {
   setText(s: string): void {
     this.label = s;
     this.resetSize();
+    this.setScroll();
+  }
+
+  setBounds(x: number, y: number, w: number, h: number): void {
+    super.setBounds(x, y, w, h);
+    this.setScroll();
+  }
+
+  /** Bit 4 = text wider than the box (eligible to scroll); restarts the marquee. */
+  private setScroll(): void {
+    this.setSetting(4, this.vm[VM.W] - this.vm[VM.BORDER_LEFT] - this.vm[VM.BORDER_RIGHT] < this.strWidth);
+    this.scrollOffset = 0;
+    this.setSetting(1, false);
+  }
+
+  /** Bit 2 = marquee enabled (LABEL_STATUS or setNeedExecuteCycle). */
+  needExecuteCycle(): boolean {
+    return this.isSetting(2) && this.isSetting(4);
+  }
+
+  /** Bit 16 = scroll only while focused; bit 8 = wrap around instead of bouncing back. */
+  cycle(): void {
+    if (!this.needExecuteCycle()) return;
+    if (this.isSetting(16) && !this.isFocus() && !this.parent?.isFocus()) {
+      this.scrollOffset = 0;
+      return;
+    }
+    this.computeScroll();
+  }
+
+  private computeScroll(): void {
+    if (this.speedCount < this.speedDis) {
+      this.speedCount++;
+      return;
+    }
+    this.speedCount = 0;
+    if (this.isSetting(1)) {
+      if (this.scrollOffset > 2) this.setSetting(1, false);
+      else this.scrollOffset += this.speed;
+      return;
+    }
+    const inner = this.vm[VM.W] - this.vm[VM.BORDER_LEFT] - this.vm[VM.BORDER_RIGHT];
+    if (!this.isSetting(8) && this.scrollOffset < inner - this.strWidth - 2) {
+      this.setSetting(1, true);
+      return;
+    }
+    this.scrollOffset -= this.speed;
+    if (this.scrollOffset + this.strWidth < 0 && this.isSetting(8)) this.scrollOffset = inner;
   }
 
   protected getBaseFontHeight(): number {
@@ -964,6 +1018,10 @@ export class GLabel extends GWidget {
       const by = this.vm[VM.YY] + (a & VCENTER ? this.getH() >> 1 : a & BOTTOM ? this.getH() : 0);
       this.bgRes.drawFrame(g, focus ? this.bgFrameSelectIndex : this.bgFrameIndex, bx, by, 0, a);
     }
+    while (this.lastTick < uiClock.tick) {
+      this.lastTick++;
+      this.cycle();
+    }
     this.paintContent(g);
     g.setClip(0, 0, uiScreen.width, uiScreen.height);
   }
@@ -971,7 +1029,8 @@ export class GLabel extends GWidget {
   /**
    * GLabel.paint text placement: inside the border insets (+ offset), horizontal anchor from
    * the label anchor, VCENTER converted to TOP with manual centring, clipped to the text box.
-   * (Marquee scrolling of over-long text and icon prefixes are not ported yet.)
+   * The text is shifted by the marquee offset; icon prefixes (set at runtime by UIHandler) are
+   * not ported yet. Bit 512 underlines the text box.
    */
   protected paintContent(g: Graphics): void {
     if (this.label == null) return;
@@ -981,7 +1040,8 @@ export class GLabel extends GWidget {
     const w = vm[VM.W] - vm[VM.BORDER_LEFT] - vm[VM.BORDER_RIGHT];
     const h = vm[VM.H] - vm[VM.BORDER_TOP] - vm[VM.BORDER_BOTTOM];
     let anchor = this.anchor;
-    const tx = anchor & HCENTER ? x + ((w / 2) | 0) : anchor & RIGHT ? x + w : x;
+    const sx = x + this.scrollOffset;
+    const tx = anchor & HCENTER ? sx + ((w / 2) | 0) : anchor & RIGHT ? sx + w : sx;
     let ty: number;
     if (anchor & VCENTER) {
       ty = (((h - this.getBaseFontHeight()) / 2) | 0) + y;
@@ -993,6 +1053,10 @@ export class GLabel extends GWidget {
     }
     g.clipRect(x, y, w, h);
     this.paintLabel(g, tx, ty, anchor === 0 ? TOP | 4 : anchor);
+    if (this.isSetting(512)) {
+      g.setColor(this.isFocus() ? this.selectLabelColor : this.labelColor);
+      g.drawLine(x + 1, y + h - 1, x + w - 1, y + h - 1);
+    }
   }
 
   /** GLabel.paintLabel: system-font text with an optional 4-way or drop-shadow border. */
