@@ -73,6 +73,8 @@ export class GWidget {
   focusShadeColorTable: number[] | null = null;
   /** setObj/getObj: the game object a widget shows (an item, a player…). */
   private obj: unknown = null;
+  /** Rebuilds this widget from its .ui data (set by UIBuilder); see getClone. */
+  cloneSource: (() => GWidget) | null = null;
 
   constructor(vm: Int32Array) {
     this.vm = vm;
@@ -115,6 +117,14 @@ export class GWidget {
   }
   setObj(o: unknown): void {
     this.obj = o;
+  }
+  /**
+   * getClone: a fresh copy built from the same .ui data. Java copies the live state instead; the
+   * screens only clone library templates that are not changed before cloning, so this matches.
+   */
+  getClone(): GWidget {
+    if (this.cloneSource == null) throw new Error('widget has no .ui source to clone');
+    return this.cloneSource();
   }
   getObj(): unknown {
     return this.obj;
@@ -335,6 +345,16 @@ export class GContainer extends GWidget {
 
   getChildNum(): number {
     return this.children.length;
+  }
+
+  /** GContainer.clear: drop the children and reset the scroll bar. */
+  clear(): void {
+    this.children.length = 0;
+    this.gsb?.reset();
+  }
+
+  getScrollBar(): GScrollBar | null {
+    return this.gsb;
   }
 
   /** GContainer.show: re-place children and lay out again. */
@@ -1305,6 +1325,13 @@ export class GWindow extends GLinePanel {
 
   setFirstFocus(): void {
     this.setFocusIndex(0);
+  }
+
+  /** Focus child i if it can take the focus, else the previous focusable one. */
+  setPrevFocus(i: number): void {
+    const w = this.getJavaChild(i);
+    if (w != null && w.isEnableFocus()) this.setFocus(w);
+    else this.keyPrev(this.children, i);
   }
 
   setFocus(w: GWidget | boolean | null): void {

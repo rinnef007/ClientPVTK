@@ -1,6 +1,8 @@
 // The parts of com.hz.item.Item and com.hz.actor.PlayerBag the UI screens read: icon frame in
 // image set 1 (bagIcon), grade (back plate), count, stars, suit id and expiry. Real items come
 // from the server; the test map builds a few by hand.
+export const ITEM_ID_QUICK_FILL_HP = -10000;
+
 export class Item {
   id = 0;
   name = '';
@@ -8,7 +10,7 @@ export class Item {
   bagIcon = -1;
   /** Quality 0..5: picks the slot back plate /common/ic<grade>.png. */
   grade = 0;
-  quantity = 1;
+  quantity = 0;
   star = 0;
   ascensionStar = 0;
   attachDone = 0;
@@ -18,6 +20,35 @@ export class Item {
   isUpgradeItem = false;
   /** Free text the item info box shows (stats in the real game). */
   description = '';
+  /** Item.type: 27/28/31 are usable from the world item list (isCanUse(1)). */
+  type = 0;
+  info = '';
+
+  /** Item.getPowerDesc: the attribute text built from server data; the demo text here. */
+  getPowerDesc(): string {
+    return this.description;
+  }
+
+  getInfo(): string {
+    return this.info === '0' ? '' : this.info;
+  }
+
+  isCanUse(kind: number): boolean {
+    if (kind === 1) return this.type === 27 || this.type === 28 || this.type === 31;
+    if (kind === 2) return this.type === 27 || this.type === 26;
+    return kind === 3;
+  }
+
+  /** Item.getOneKeyQuickHP: the "use potions until full" entry at the top of the item list. */
+  static getOneKeyQuickHP(): Item {
+    const it = new Item();
+    it.name = 'Hồi phục hết'; // GameText.STR_ITEM_ONE_KEY_RECOVERY
+    it.id = ITEM_ID_QUICK_FILL_HP;
+    it.bagIcon = 17;
+    it.grade = 1;
+    it.info = 'Tự dùng thuốc hồi phục hồi HP.'; // STR_ITEM_ONE_KEY_RECOVERY_INFO
+    return it;
+  }
 
   getItemSetID(): number {
     return this.itemSetID;
@@ -51,6 +82,14 @@ export class PlayerBag {
   /** Bag items in slot order (for sorting or listing). */
   bagItems(): [number, Item][] {
     return [...this.items.entries()].filter(([s]) => s >= BAG_START).sort((a, b) => a[0] - b[0]);
+  }
+
+  /**
+   * PlayerBag.getCanUseItemList(kind): bag items usable from the world. The VIP, pet-item,
+   * colour-box and special-power exclusions need server item data and are not checked.
+   */
+  getCanUseItemList(kind: number): Item[] {
+    return this.bagItems().map(([, it]) => it).filter((it) => it.isCanUse(kind));
   }
 
   clearBag(): void {

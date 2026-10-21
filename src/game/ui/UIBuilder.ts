@@ -242,6 +242,7 @@ function apply(w: GWidget, c: UICall, lib: UINode[], register?: (w: GWidget) => 
  */
 export function build(node: UINode, lib: UINode[], register?: (w: GWidget) => void): GWidget {
   const w = create(node);
+  w.cloneSource = () => build(node, lib);
   for (const c of node.calls) apply(w, c, lib, register);
   register?.(w);
   for (const child of node.children) {

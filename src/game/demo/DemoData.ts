@@ -4,8 +4,9 @@
 import { BAG_START, Item, PlayerBag } from '../actor/Item';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, ATTR_MP_MAX, type Player } from '../actor/Player';
 
-function item(name: string, bagIcon: number, grade: number, quantity = 1, description = ''): Item {
+function item(name: string, bagIcon: number, grade: number, quantity = 1, description = '', type = 0): Item {
   const it = new Item();
+  it.type = type;
   it.name = name;
   it.bagIcon = bagIcon;
   it.grade = grade;
@@ -26,11 +27,11 @@ export function makeDemoBag(): PlayerBag {
   ];
   for (const [slot, it] of equip) bag.setItem(slot, it);
   const bagItems = [
-    item('Bình máu demo', 30, 0, 25),
-    item('Bình mana demo', 31, 0, 12),
+    item('Bình máu demo', 30, 0, 25, 'Hồi 500 HP (dữ liệu giả).', 27),
+    item('Bình mana demo', 31, 0, 12, 'Hồi 300 MP (dữ liệu giả).', 27),
     item('Đá cường hóa demo', 40, 2, 5),
     item('Bảo thạch demo', 45, 3, 2),
-    item('Cuộn dịch chuyển demo', 50, 1, 3),
+    item('Cuộn dịch chuyển demo', 50, 1, 3, 'Về thành (dữ liệu giả).', 31),
     item('Trang bị demo', 14, 5),
   ];
   bagItems.forEach((it, i) => bag.setItem(BAG_START + i, it));
