@@ -64,8 +64,27 @@
 ### 2.3 Tài nguyên
 - Code nạp tài nguyên từ `assets/` với các đuôi: `.png`, `.fr` (fragment), `.spr` (sprite), `.m` (map),
   `.ui`, `.pd`/`.pn` (page data/name), `.mss`/`.txt` (nhiệm vụ), `.t` (font), `.n` (event), `.pl`.
-- **Gói upload chỉ có `.png` (~2.350 file)**. Thiếu toàn bộ file dữ liệu nhị phân nói trên, nên chưa
-  dựng được bản đồ, ghép sprite hay layout UI giống bản gốc. → **Blocker cho giai đoạn 3–4** (xem §8).
+- Người dùng đã gửi thêm `assets.rar` (toàn bộ `assets/` của APK, 8.662 file). Thống kê sau khi giải nén:
+
+  | Thư mục | Nội dung |
+  |---------|----------|
+  | `ani/ani2/` | 2.966 `.spr`, 1.816 `.pl`, 1.439 `.fr`, 1.444 `.png` (nhân vật, quái, hiệu ứng) |
+  | `ani/` | 81 `.pd` + `3.pn` (gói ảnh nén), 44 `.png` |
+  | `ui/` | 165 `.ui` (layout giao diện) |
+  | `common/` | 331 `.png`, 176 `.fr`, 5 font bitmap `.t` (12/14/16/18/20) |
+  | `map/` | `1.pd` + `1.pn`: gói ảnh tile bản đồ |
+  | gốc | `jad.properties` (MIDlet `com.hz.GameMIDlet`, "WorldOL", v1.4), `p.ini` (chuỗi nạp tiền), `demo.html` |
+
+- Định dạng (đọc từ `ResourceHandler`, `ImageSet`, `Utilities`):
+  - `.pn` = danh sách ID ảnh; `.pd` = các ảnh PNG đóng gói tương ứng (`formBytesPackData`).
+  - `.pl` = bảng màu; `loadColorImage` tìm chunk `PLTE` trong PNG và thay bằng bảng màu này. Đây là cách game
+    tạo nhiều biến thể màu từ một sprite.
+  - `.fr` = toạ độ/kích thước từng khung trong ảnh (`ImageSet.fromBytes`).
+- **Không có file `.m` (bố cục bản đồ) trong APK.** `GameMap.loadMap` được gọi trong `MsgHandler` khi nhận dữ liệu
+  **từ server**. Vì vậy, khi chạy offline, bố cục bản đồ phải tự dựng (ghép tile thủ công hoặc sinh bằng script);
+  ảnh tile thì có sẵn trong `map/1.pd`.
+- `classes*.dex` do người dùng gửi: `classes2.dex` chứa package `com/hz` (code game). Đây là bản biên dịch của code đã
+  decompile; mình *chưa* đối chiếu từng byte để chắc là cùng một build.
 
 ## 3. Kiến trúc web
 
@@ -127,8 +146,8 @@ public/assets/       – (gitignored) ảnh nạp bằng import-assets
 |-----------|----------|------------|------------|
 | **P1 – Nền tảng** | Vite/TS, shim MIDP, Message/FrameDecoder/SocketClient, mock server, import ảnh, các màn Splash, Menu, Asset Viewer, Net Test | `npm test` pass; `npm run dev` + `npm run mock` → Net Test kết nối, gửi/nhận heartbeat; Asset Viewer duyệt được ảnh | ✅ làm trong commit này |
 | P2 – Luồng đăng nhập offline | Port `ServerInfo`, màn chọn server/nhân vật (`CG_LOGIN_*`), mock trả danh sách nhân vật giả | Tạo/chọn nhân vật giả và vào được "world" trống | ⏳ |
-| P3 – Sprite & bản đồ | Port `sprite/*`, `image/ImageSet`, `map/*` | Vẽ đúng 1 bản đồ + nhân vật đi lại | ⛔ cần file `.fr/.spr/.m` |
-| P4 – UI hệ thống | Port `gui/*`, `ui/UIObject`, một phần `UIHandler` (túi đồ, chat, nhiệm vụ) | Mở được túi đồ, chat với dữ liệu mock | ⛔ cần `.ui/.pd/.pn` |
+| P3 – Sprite & bản đồ | Port `.pd/.pn`, `.pl`, `.fr`, `.spr`, `sprite/*`, `map/*` | Xem được animation nhân vật đúng màu; vẽ được 1 bản đồ dựng tay + nhân vật đi lại | ⏳ đã có dữ liệu (trừ bố cục map) |
+| P4 – UI hệ thống | Port `.ui`, font `.t`, `gui/*`, `ui/UIObject`, một phần `UIHandler` (túi đồ, chat, nhiệm vụ) | Mở được túi đồ, chat với dữ liệu mock | ⏳ đã có dữ liệu |
 | P5 – Chiến đấu | `battle/*` theo lượt | Chơi một trận với quái mock | ⏳ |
 | P6 – Hoàn thiện | Âm thanh, lưu cài đặt (`localStorage` thay RMS), mobile touch, PWA | Lighthouse PWA, chơi được trên điện thoại | ⏳ |
 
@@ -142,8 +161,8 @@ mỗi giai đoạn có thể cần nhiều phiên làm việc.
 - Thủ công: chạy dev server, kiểm tra các màn.
 
 ## 8. Rủi ro & câu hỏi mở
-1. **Thiếu file dữ liệu nhị phân** (`.fr/.spr/.m/.ui/.pd/.pn/.mss/.t/.n/.pl`). Cần toàn bộ thư mục `assets/`
-   trong APK (giải nén APK như file zip). Nếu không có, P3–P4 chỉ làm được bằng dữ liệu tự chế.
+1. ~~Thiếu file dữ liệu nhị phân~~. Đã có từ `assets.rar`. Riêng **bố cục bản đồ (`.m`) do server gửi**, không có
+   trong APK, nên khi chạy offline phải tự dựng map.
 2. **Không có server**. Mock server chỉ trả lời vài loại tin. Hành vi thật của server phải suy ra từ
    `MsgHandler` (bên nhận), nên có thể sai ở nhiều chỗ.
 3. Code jadx có đoạn decompile lỗi (ví dụ vòng lặp `while(true)` trong `Input.run`). Khi port phải đọc theo ý đồ,

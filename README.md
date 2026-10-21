@@ -57,5 +57,5 @@ Có thể chạm hoặc bấm chuột; bấm vào thanh dưới cùng để dùn
 
 ## Trạng thái
 Mới xong giai đoạn 1 (nền tảng): lớp tương thích MIDP, giao thức mạng, mock server, xem tài nguyên.
-Muốn dựng bản đồ, sprite và UI giống gốc thì cần các file dữ liệu `.fr/.spr/.m/.ui/.pd/...` trong
-thư mục `assets/` của APK. Gói ảnh hiện có chưa chứa các file này (xem SPEC §8).
+Đã có đủ dữ liệu sprite/UI (`assets.rar`): chạy `npm run import-assets -- <thư mục giải nén rar>`.
+Bố cục bản đồ do server gửi nên không có sẵn (xem SPEC §2.3, §8).
