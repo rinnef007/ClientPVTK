@@ -4,8 +4,9 @@
 // Each row is a group of buttons for bits of Model.setting: in a normal row the button whose bit
 // is set is focused (ids below 10050 mean "no bit"), a two-entry row [id, 0|1] is an on/off
 // toggle (0: the bit means off). Closing with changes asks to confirm and sends them to the server
-// (createChangeSettingMessgae); offline the new value is only kept on the local player.
+// (createChangeSettingMessgae); offline the value is applied and kept by GameStore (localStorage).
 import type { Player } from '../../actor/Player';
+import * as GameStore from '../../main/GameStore';
 import * as GameWorld from '../../main/GameWorld';
 import { GLabel } from '../../gui/GWidget';
 import { UIHandler, alertMessage } from '../UIHandler';
@@ -108,7 +109,7 @@ export function createSettingUI(p: Player | null): void {
   const ui = UIHandler.createUIFromXML(TYPE_SETTING);
   const obj = UIObject.getUIObj(ui);
   obj.object = p;
-  obj.intValue1 = p?.setting ?? 0;
+  obj.intValue1 = p != null ? p.setting : GameStore.getGameSetting();
   const extra = UIHandler.createUIFromXML(TYPE_SETTING_2);
   for (const [ev, w] of extra.vmGWidgets) if (ui.getGWidgetByEventType(ev) == null) ui.addEventGWidget(w);
   if (!updateDataToSettingUI(ui, true)) {
@@ -126,8 +127,16 @@ function processSettingLayer(ui: UIHandler, action: number): void {
   const v = obj.intValue1;
   if (action === 1) {
     const p = obj.object as Player | null;
-    // Java: "Đồng ý cài đặt như vậy không?" then the server; offline the value is applied locally.
-    if (p != null && p.setting !== v) p.setting = v;
+    // Java: "Đồng ý cài đặt như vậy không?" then the server, then GameStore.saveSetting; offline
+    // the value is applied and stored locally.
+    if (p != null && p.setting !== v) {
+      p.setting = v;
+      GameStore.saveSetting();
+    }
+    if (p == null && GameStore.getGameSetting() !== v) {
+      GameStore.setGameSetting(v);
+      GameStore.saveSystem();
+    }
     ui.close();
     return;
   }

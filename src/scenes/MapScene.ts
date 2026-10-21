@@ -3,8 +3,9 @@ import { FONT_MEDIUM, FONT_SMALL, type Graphics } from '../midp/Graphics';
 import { KEY_FIRE, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
 import { NPC } from '../game/actor/NPC';
 import { Player } from '../game/actor/Player';
-import { Model, TYPE_PLAYER } from '../game/actor/Model';
+import { Model, TYPE_PET } from '../game/actor/Model';
 import { Control } from '../game/main/Control';
+import * as GameStore from '../game/main/GameStore';
 import * as GameWorld from '../game/main/GameWorld';
 import { MAP_MODEL_IMAGES } from '../game/main/MapModels';
 import * as WorldPanel from '../game/main/WorldPanel';
@@ -128,13 +129,14 @@ export class MapScene implements Scene {
     me.setPlayerSprite(mySprite);
     me.setAnimationByDir(false);
     fillDemoPlayer(me);
+    GameStore.applyLoginSetting(me);
     me.initFollowPos();
     me.getPet()?.setAnimationByDir(false);
 
     const others: Model[] = [];
     for (let i = 0; i < OTHER_PLAYERS.length; i++) {
       const s = await dressedSprite({ ...DEFAULT_APPEARANCE, ...OTHER_PLAYERS[i] });
-      const m = new Model(TYPE_PLAYER);
+      const m = new Player();
       m.id = 100 + i;
       // Demo list data (the server sends these in the real game).
       m.name = i === 0 ? 'TiểuLinh' : 'KiếmKhách';
@@ -143,6 +145,13 @@ export class MapScene implements Scene {
       m.setPosition(i === 0 ? 12 : 30, i === 0 ? 14 : 15);
       m.setPlayerSprite(s);
       m.setAnimationByDir(false);
+      // A made-up pet following them (pets come with the player's data from the server).
+      const pet = new Player(TYPE_PET);
+      pet.name = `Pet demo của ${m.name}`;
+      pet.setPlayerSprite(GameSprite.createSprite(PET_SPRITES[(i + 1) % PET_SPRITES.length]));
+      pet.setAnimationByDir(false);
+      m.setPet(pet);
+      m.initFollowPos();
       others.push(m);
     }
 
