@@ -1,0 +1,5 @@
+node_modules/
+dist/
+# Original game art is third-party copyrighted: import locally, never commit.
+public/assets/
+*.zip
