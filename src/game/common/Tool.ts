@@ -85,3 +85,7 @@ export function isColliding(x1: number, y1: number, w1: number, h1: number, x2: 
 export function rand(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
+
+export function isNullText(s: string | null | undefined): boolean {
+  return s == null || s.trim() === '';
+}

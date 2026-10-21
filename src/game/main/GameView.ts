@@ -296,3 +296,48 @@ export function drawImageNumber(g: Graphics, set: ImageSet | null, start: number
   }
   return cx - left;
 }
+
+const barColorTable = [5329761, 12490818];
+const barColorTable2 = [512, 512];
+
+/** Touch scroll bar from image set 103: end caps (frame 0), thumb caps (1) and thumb body (2). */
+export function drawScrollBar(g: Graphics, x: number, y: number, _w: number, h: number, pos: number, max: number, show: number): void {
+  const set = getImageSet(103);
+  if (set == null) return;
+  const fw = set.getFrameWidth(0);
+  const capH = set.getFrameHeight(0);
+  const thumbCapH = set.getFrameHeight(1);
+  const bodyH = set.getFrameHeight(2);
+  const track = h - capH * 2;
+  const top = y + capH;
+  if (max <= 0) return;
+  const total = max + show;
+  if (total <= 0) return;
+  const thumb = ((show * track) / total) | 0;
+  let off = ((pos * track) / total) | 0;
+  if (pos === max) off = track - thumb;
+  drawFrameBox(g, x + 5, top, fw - 10, track, barColorTable, null, null, null, 0, 0);
+  const n = ((thumb / bodyH) | 0) + (thumb % bodyH !== 0 ? 1 : 0);
+  const ty = top + off;
+  const [cx, cy, cw, ch] = [g.getClipX(), g.getClipY(), g.getClipWidth(), g.getClipHeight()];
+  g.setClip(x, ty + 3, fw, thumb - 6);
+  for (let i = 0, yy = ty; i < n; i++, yy += bodyH) set.drawFrame(g, 2, x, yy, 0, 0);
+  g.setClip(cx, cy, cw, ch);
+  set.drawFrame(g, 1, x, ty, 0, 0);
+  set.drawFrame(g, 1, x, ty + thumb - thumbCapH, 2, 0);
+  set.drawFrame(g, 0, x, top - capH, 0, 0);
+  set.drawFrame(g, 0, x, top + track, 2, 0);
+}
+
+/** Plain scroll bar: a dark track with a coloured thumb. */
+export function drawScrollBar2(g: Graphics, x: number, y: number, w: number, h: number, pos: number, max: number, show: number): void {
+  if (max <= 0) return;
+  const total = max + show;
+  if (total <= 0) return;
+  const thumb = ((show * h) / total) | 0;
+  let off = ((pos * h) / total) | 0;
+  if (pos === max) off = h - thumb;
+  drawFrameBox(g, x, y, w, h, barColorTable2, null, null, null, 0, 0);
+  g.setColor(10980950);
+  g.fillRect(x, y + off, w - 1, thumb);
+}

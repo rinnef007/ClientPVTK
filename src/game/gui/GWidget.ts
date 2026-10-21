@@ -5,10 +5,12 @@
 // until the .t pixel fonts are ported, and focus/scrolling/input are not ported yet.
 import type { Graphics } from '../../midp/Graphics';
 import { BOTTOM, HCENTER, RIGHT, TOP, VCENTER } from '../../midp/anchor';
-import { drawBorderString, drawBoxLines, drawFrameBox, drawImageNumber, fillArcRect, fillArcRect2, getImageSet } from '../main/GameView';
+import { drawBorderString, drawBoxLines, drawFrameBox, drawScrollBar, drawScrollBar2, drawImageNumber, fillArcRect, fillArcRect2, getImageSet } from '../main/GameView';
 import type { ImageSet } from '../image/ImageSet';
 import type { GameSprite } from '../sprite/GameSprite';
 import { PixelFont, PixelString } from '../string/PixelFont';
+import { PowerString } from '../string/PowerString';
+import { isNullText } from '../common/Tool';
 
 const MAX = 2147483647;
 
@@ -255,6 +257,7 @@ export class GContainer extends GWidget {
   realHeight = 0;
   firstInViewIndex = -1;
   lastInViewIndex = -1;
+  gsb: GScrollBar | null = null;
 
   constructor(vm: Int32Array) {
     super(vm);
@@ -279,14 +282,39 @@ export class GContainer extends GWidget {
   setBounds(x: number, y: number, w: number, h: number): void {
     super.setBounds(x, y, w, h);
     this.setAbs();
+    this.refreshScrollBar();
   }
 
   setAbs(): void {
     for (const c of this.children) {
       c.vm[VM.XX] = c.getAbsX();
       c.vm[VM.YY] = c.getAbsY();
-      if (c instanceof GContainer) c.setAbs();
+      if (c instanceof GContainer) {
+        c.setAbs();
+        if (c.gsb != null) {
+          c.gsb.vm[VM.XX] = c.gsb.getAbsX();
+          c.gsb.vm[VM.YY] = c.gsb.getAbsY();
+        }
+      }
     }
+  }
+
+  addScrollBar(sb: GScrollBar | null): void {
+    this.gsb = sb;
+    if (sb != null) sb.parent = this;
+  }
+
+  /** Docks the scroll bar at the left, centre or right edge, full height. */
+  refreshScrollBar(): void {
+    const sb = this.gsb;
+    if (sb == null) return;
+    const x = sb.align === 1 ? ((this.vm[VM.W] - sb.getMinW()) / 2) | 0 : sb.align === 2 ? this.vm[VM.W] - sb.getMinW() : 0;
+    sb.setBounds(x, 0, sb.getMinW(), this.vm[VM.H]);
+  }
+
+  /** First child with the given event type (UIHandler uses 997 for a text area's page label). */
+  getJavaChildByEvent(e: number): GWidget | null {
+    return this.children.find((c) => c.getEventType() === e) ?? null;
   }
 
   layout(): void {
@@ -399,6 +427,10 @@ export class GContainer extends GWidget {
     if (cut > 0) {
       this.needScrollBar = true;
       this.outHeight = y - cut;
+      if (this.gsb != null) {
+        this.gsb.maxScrollDis = this.outHeight;
+        this.gsb.showDis = cut;
+      }
       y = cut;
     } else {
       this.needScrollBar = false;
@@ -454,13 +486,26 @@ export class GContainer extends GWidget {
     }
     const visible = cols * rows;
     this.needScrollBar = visible < n;
-    if (this.needScrollBar) this.outHeight = (usedRows - rows) * (vgap + ch);
+    if (this.needScrollBar) {
+      this.outHeight = (usedRows - rows) * (vgap + ch);
+      if (this.gsb != null) {
+        this.gsb.maxScrollDis = this.outHeight;
+        this.gsb.showDis = rows * (vgap + ch);
+      }
+    } else if (this.gsb != null) {
+      this.gsb.maxScrollDis = 0;
+    }
     this.firstInViewIndex = 0;
     this.lastInViewIndex = this.needScrollBar ? visible - 1 : n - 1;
     this.children.forEach((w, i) => w.setOutView(i >= visible));
   }
 
   align(): void {
+    this.alignChildren();
+    this.refreshScrollBar();
+  }
+
+  private alignChildren(): void {
     const n = this.children.length;
     const mode = this.layoutData[3];
     if (mode === 0) {
@@ -506,6 +551,7 @@ export class GContainer extends GWidget {
   /** GContainer.paintChildren: visible, in-view children only. */
   paintChildren(g: Graphics): void {
     for (const c of this.children) if (c.isShow() && !c.isOutView()) c.paint(g);
+    if (this.gsb != null && this.needScrollBar) this.gsb.paint(g);
   }
 
   paint(g: Graphics): void {
@@ -558,48 +604,244 @@ export class GLinePanel extends GContainer {
       const y = this.vm[VM.OFFSET_Y] + this.vm[VM.YY] + this.getH() - 1;
       g.drawLine(x, y, this.getW() + x - 2, y);
     }
+    this.paintData(g);
     g.setClip(0, 0, uiScreen.width, uiScreen.height);
     this.paintChildren(g);
   }
+
+  /** Content drawn over the panel and under the children (GTextArea's text). */
+  paintData(_g: Graphics): void {}
 }
 
 export class GTextArea extends GLinePanel {
-  text = '';
-  textColor = 0xffffff;
+  text: string | null = null;
+  textColor = 0;
+  lineColor = -1;
+  lineHeight: number;
+  lineSpace = 0;
+  anchor = 0;
+  isAutoScroll = false;
+  alertMsg: string | null = null;
+  alertCount = 0;
+  curPage = 0;
+  totalPage = 0;
+  counter = 0;
+  pageGWidgetHeight = 0;
+  messages: PowerString[] | null = null;
+  private displayHeight = 0;
+  private numChoicesHeight = 0;
+  private numTotalOffsetHeight = 0;
+  private offsetY = 0;
+  private isPartRowShow = false;
+  private piePageHeight: number[] = [];
+  private lastTick = uiClock.tick;
 
   constructor(vm: Int32Array) {
     super(vm);
     this.setType(52);
+    this.lineHeight = uiFont.height;
+    if (this.lineHeight > this.getMinH()) this.setMinHeight(this.lineHeight);
   }
 
-  setText(s: string): void {
+  /** DATA_TEXTAREA. */
+  setTextData(text: string, color: number, anchor: number, autoScroll: boolean): void {
+    this.isAutoScroll = autoScroll;
+    this.textColor = color;
+    this.anchor = anchor;
+    this.setText(text);
+  }
+
+  setText(s: string | null): void {
     this.text = s;
+    this.alertMsg = null;
+    this.alertCount = 0;
+    this.setLines();
   }
 
-  /** Word-wrapped text (GTextArea.paintData); PowerString markup is not interpreted yet. */
-  paint(g: Graphics): void {
-    super.paint(g);
-    if (!this.text) return;
-    g.setClip(this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]);
-    g.setColor(this.textColor);
-    const maxW = this.vm[VM.W] - this.vm[VM.BORDER_LEFT] - this.vm[VM.BORDER_RIGHT];
-    let y = this.vm[VM.YY] + this.vm[VM.BORDER_TOP];
-    let line = '';
-    const flush = () => {
-      g.drawString(line, this.vm[VM.XX] + this.vm[VM.BORDER_LEFT], y, TOP | 4);
-      y += uiFont.height;
-      line = '';
-    };
-    for (const ch of this.text.replace(/\/[a-z][0-9a-f]{0,6}/gi, '')) {
-      if (ch === '\n') {
-        flush();
-        continue;
-      }
-      if (uiFont.stringWidth(line + ch) > maxW && line) flush();
-      line += ch;
+  setAlertText(s: string): void {
+    this.alertMsg = s;
+    this.alertCount = 20;
+    this.setLines();
+  }
+
+  getText(): string | null {
+    return isNullText(this.alertMsg) ? this.text : this.alertMsg;
+  }
+
+  setBounds(x: number, y: number, w: number, h: number): void {
+    const old = this.getH();
+    super.setBounds(x, y, w, h);
+    if (old !== this.getH()) this.setLines();
+  }
+
+  private realLineHeight(): number {
+    return this.lineHeight + this.lineSpace;
+  }
+
+  private textHeight(i: number, min: number): number {
+    const m = this.messages;
+    if (m == null || i < 0 || i >= m.length || m[i] == null) return 0;
+    return Math.max(m[i].height, min);
+  }
+
+  private totalLineHeight(min: number): number {
+    let h = 0;
+    for (let i = 0; this.messages != null && i < this.messages.length; i++) h += this.textHeight(i, min);
+    return h;
+  }
+
+  private firstPageFullHeight(min: number, max: number): number {
+    if (this.messages == null) return max;
+    let h = 0;
+    for (let i = 0; i < this.messages.length; i++) {
+      const next = this.textHeight(i, min) + h;
+      if (next > max) return h;
+      h = next;
     }
-    if (line) flush();
-    g.setClip(0, 0, uiScreen.width, uiScreen.height);
+    return max;
+  }
+
+  private adjustWidthHeight(): void {
+    if (this.getW() < this.getMinW()) this.setW(this.getMinW());
+    else if (this.getW() > this.getMaxW()) this.setW(this.getMaxW());
+    if (this.getH() < this.getMinH()) this.setH(this.getMinH());
+    else if (this.getH() > this.getMaxH()) this.setH(this.getMaxH());
+  }
+
+  /** Wraps the text to the inner width minus `reserve` and shrinks/grows the box to fit. */
+  private initArea(reserve: number): void {
+    this.curPage = 0;
+    this.totalPage = 1;
+    this.needScrollBar = false;
+    this.offsetY = 0;
+    this.numChoicesHeight = 0;
+    this.numTotalOffsetHeight = 0;
+    this.isPartRowShow = false;
+    this.adjustWidthHeight();
+    const right = Math.max(this.vm[VM.BORDER_RIGHT], reserve);
+    const text = this.getText();
+    this.messages = PowerString.splitPowerString(text, uiFont, this.vm[VM.W] - this.vm[VM.BORDER_LEFT] - right);
+    const tb = this.vm[VM.BORDER_TOP] + this.vm[VM.BORDER_BOTTOM];
+    if (!isNullText(text)) {
+      this.numChoicesHeight = this.totalLineHeight(this.realLineHeight());
+      const h = this.numChoicesHeight + tb;
+      if (h < this.getH()) this.setH(h);
+      if (this.getH() < this.getMinH()) this.setH(this.getMinH());
+    }
+    this.displayHeight = this.vm[VM.H] - this.pageGWidgetHeight - tb;
+    if (this.numChoicesHeight > this.displayHeight) {
+      this.needScrollBar = true;
+      const full = this.firstPageFullHeight(this.realLineHeight(), this.displayHeight) + this.pageGWidgetHeight + tb;
+      this.setH(full < this.getMinH() ? this.getMinH() : Math.min(full, this.getMaxH()));
+      this.displayHeight = this.vm[VM.H] - this.pageGWidgetHeight - tb;
+      this.numTotalOffsetHeight = this.numChoicesHeight - this.displayHeight;
+      this.initPage(this.realLineHeight());
+    }
+    if (this.isAutoScroll && this.needScrollBar) {
+      this.isPartRowShow = true;
+      this.offsetY = 5;
+    }
+  }
+
+  private initPage(min: number): void {
+    this.totalPage = 1;
+    this.piePageHeight = [];
+    if (this.messages == null) return;
+    let h = 0;
+    for (let i = 0; i < this.messages.length; i++) {
+      const lh = this.textHeight(i, min);
+      if (h + lh > this.displayHeight) {
+        this.totalPage++;
+        this.piePageHeight.push(h);
+        h = lh;
+      } else {
+        h += lh;
+      }
+    }
+  }
+
+  private setLines(): void {
+    this.pageGWidgetHeight = 0;
+    this.initArea(0);
+    if (this.gsb != null) {
+      if (this.needScrollBar) this.initArea(this.gsb.getBarWidth() - this.gsb.vm[VM.OFFSET_X]);
+      this.gsb.reset();
+      this.gsb.maxScrollDis = this.numTotalOffsetHeight;
+      this.gsb.showDis = this.displayHeight;
+    } else {
+      const page = this.getJavaChildByEvent(997);
+      if (page != null) {
+        page.setShow(false);
+        if (this.needScrollBar) {
+          page.setShow(true);
+          this.pageGWidgetHeight = page.getH();
+          this.initArea(0);
+        }
+        this.updatePageText();
+      }
+    }
+  }
+
+  private updatePageText(): void {
+    const page = this.getJavaChildByEvent(997);
+    if (page instanceof GLabel) page.setText(`${this.curPage + 1}/${this.totalPage}`);
+  }
+
+  /** IGCycle.cycle: alert timeout and the auto-scrolling marquee (one call per logic tick). */
+  cycle(): void {
+    if (this.alertCount > 0 && --this.alertCount <= 0) {
+      this.alertMsg = null;
+      this.setLines();
+      return;
+    }
+    if (!this.needScrollBar || !this.isAutoScroll) return;
+    if (++this.counter === 100) this.counter = 0;
+    if (this.counter % 2 === 0) this.offsetY--;
+    if (this.offsetY < -this.numChoicesHeight) this.offsetY = this.displayHeight;
+  }
+
+  private drawRowText(g: Graphics, i: number, x: number, y: number, w: number, minH: number, top: number, bottom: number): number {
+    const m = this.messages![i];
+    if (m == null) return 0;
+    m.iconOffset = 0;
+    const h = Math.max(m.height, minH);
+    const lineBottom = y + h;
+    if (lineBottom <= top) return h;
+    if (!this.isPartRowShow && (y < top || lineBottom > bottom)) return h;
+    const a = this.anchor;
+    const xx = a & 1 ? ((w / 2) | 0) + x : a & 8 ? x + w : x;
+    let yy = y;
+    let anchor = a;
+    if (a & 2) {
+      yy = y + (((h - m.height) / 2) | 0);
+      anchor = (a & -3) | 16;
+    } else if (a & 32) {
+      yy = y + (h - (((h - m.height) / 2) | 0));
+    }
+    g.setColor(this.textColor);
+    m.draw(g, xx, yy, anchor);
+    if (this.lineColor !== -1) {
+      g.setColor(this.lineColor);
+      g.drawLine(x, lineBottom, w + x, lineBottom);
+    }
+    return h;
+  }
+
+  paintData(g: Graphics): void {
+    while (this.lastTick < uiClock.tick) {
+      this.lastTick++;
+      this.cycle();
+    }
+    if (this.messages == null) return;
+    const w = this.vm[VM.W] - this.vm[VM.BORDER_LEFT] - this.vm[VM.BORDER_RIGHT];
+    const top = this.vm[VM.OFFSET_Y] + this.vm[VM.YY] + this.vm[VM.BORDER_TOP];
+    const x = this.vm[VM.OFFSET_X] + this.vm[VM.XX] + this.vm[VM.BORDER_LEFT];
+    const bottom = top + this.displayHeight;
+    g.clipRect(x, top, w, this.displayHeight);
+    let y = this.offsetY + top;
+    for (let i = 0; y < bottom && i < this.messages.length; i++) {
+      y += this.drawRowText(g, i, x, y, w, this.realLineHeight(), top, bottom);
+    }
   }
 }
 
@@ -1086,6 +1328,97 @@ export class GGameIcon extends GWidget {
       drawFrameBox(g, this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H], this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
     }
     this.drawSprite(g);
+    g.setClip(0, 0, uiScreen.width, uiScreen.height);
+  }
+}
+
+export const GSB_STYLE_NORMAL = 1;
+export const GSB_STYLE_TOUCH = 2;
+
+/** Image set of the touch-style scroll bar (GameView.barSet); BAR_WIDTH is its frame 1 width. */
+export const BAR_SET_ID = 103;
+
+export class GScrollBar extends GWidget {
+  align = 0;
+  maxScrollDis = 0;
+  scrollPos = 0;
+  showDis = 0;
+  style = GSB_STYLE_TOUCH;
+
+  constructor(vm: Int32Array) {
+    super(vm);
+    this.setType(6);
+  }
+
+  /** ADD_SCROLLBAR: style, extra width, align (0 left, 1 centre, 2 right), offsets. */
+  static getScrollBar(style: number, w: number, align: number, ox: number, oy: number): GScrollBar {
+    const sb = new GScrollBar(new Int32Array(21));
+    sb.setGWidgetSetting(32, true);
+    sb.setGWidgetSetting(64, true);
+    sb.style = style;
+    const base = style === GSB_STYLE_NORMAL ? 4 : style === GSB_STYLE_TOUCH ? getImageSet(BAR_SET_ID)?.getFrameWidth(1) ?? 0 : 0;
+    sb.setMinWidth(base + w);
+    sb.setOffsetXY(ox, oy);
+    sb.align = align;
+    return sb;
+  }
+
+  getBarWidth(): number {
+    return this.getMinW();
+  }
+
+  reset(): void {
+    this.scrollPos = 0;
+    this.maxScrollDis = 0;
+    this.showDis = 0;
+  }
+
+  paint(g: Graphics): void {
+    g.setClip(0, 0, uiScreen.width, uiScreen.height);
+    const x = this.vm[VM.XX] + this.vm[VM.OFFSET_X];
+    const y = this.vm[VM.YY] + this.vm[VM.OFFSET_Y];
+    const h = this.vm[VM.H] - this.vm[VM.OFFSET_Y] * 2;
+    if (this.style === GSB_STYLE_TOUCH) drawScrollBar(g, x, y, this.vm[VM.W], h, this.scrollPos, this.maxScrollDis, this.showDis);
+    else if (this.style === GSB_STYLE_NORMAL) drawScrollBar2(g, x, y, this.vm[VM.W], h, this.scrollPos, this.maxScrollDis, this.showDis);
+    g.setClip(0, 0, uiScreen.width, uiScreen.height);
+  }
+}
+
+/** A slider: background frame, foreground frame clipped to curValue, and a knob frame. */
+export class GSpinner extends GWidget {
+  set: ImageSet | null = null;
+  bgIndex = 0;
+  fgIndex = 0;
+  pointIndex = 0;
+  maxValue = 0;
+  curValue = 0;
+
+  constructor(vm: Int32Array) {
+    super(vm);
+    this.setType(8);
+  }
+
+  setSpinnerData(set: ImageSet | null, bg: number, fg: number, point: number): void {
+    this.set = set;
+    this.bgIndex = bg;
+    this.fgIndex = fg;
+    this.pointIndex = point;
+    if (set != null) this.maxValue = set.getFrameWidth(bg);
+  }
+
+  paint(g: Graphics): void {
+    const [x, y, w, h] = [this.vm[VM.XX], this.vm[VM.YY], this.vm[VM.W], this.vm[VM.H]];
+    g.setClip(x, y, w, h);
+    drawFrameBox(g, x, y, w, h, this.colorTable, this.shadeColorTable, this.fragmentTable, null, -1, -1);
+    if (this.set != null) {
+      const sx = this.vm[VM.OFFSET_X] + x;
+      const sy = this.vm[VM.OFFSET_Y] + y + ((h / 2) | 0);
+      this.set.drawFrame(g, this.bgIndex, sx, sy, 0, 6);
+      g.setClip(sx, y, this.curValue, h);
+      this.set.drawFrame(g, this.fgIndex, sx, sy, 0, 6);
+      g.setClip(x, y, w, h);
+      this.set.drawFrame(g, this.pointIndex, sx + this.curValue, sy, 0, 3);
+    }
     g.setClip(0, 0, uiScreen.width, uiScreen.height);
   }
 }

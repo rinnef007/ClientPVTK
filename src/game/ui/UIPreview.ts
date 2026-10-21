@@ -141,6 +141,7 @@ export function collectImageSets(f: UIFile): Set<number> {
       const a = c.args;
       if ([13, 14, 15, 16, 21, 31, 40, 45].includes(c.code) && typeof a[0] === 'number') ids.add(a[0] as number);
       if ((c.code === 13 || c.code === 14 || c.code === 11) && Array.isArray(a[0]) && typeof a[1] === 'number') ids.add(a[1] as number);
+      if (c.code === 29) ids.add(103);
       if (c.code === 43 || c.code === 44) {
         const t = a[0] as number[];
         for (let i = 0; i + 5 < t.length; i += 6) ids.add(t[i]);

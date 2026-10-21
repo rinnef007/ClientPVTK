@@ -1,6 +1,7 @@
 // Turns parsed .ui data into gui widgets, applying each recorded call the way XmlParse.parseMethod
 // invokes the widget setters, and builds UIHandler.loadUIFromXML's library + frame.
 import { GameSprite } from '../sprite/GameSprite';
+import { getImageSet } from '../main/GameView';
 import {
   GContainer,
   GGameBar,
@@ -11,6 +12,8 @@ import {
   GLinePanel,
   GPixelLabel,
   GPlaceholder,
+  GScrollBar,
+  GSpinner,
   GTextArea,
   GWidget,
   GWindow,
@@ -42,6 +45,10 @@ function create(node: UINode): GWidget {
       return new GGameIcon(vm);
     case 3:
       return new GImageNumer(vm);
+    case 6:
+      return new GScrollBar(vm);
+    case 8:
+      return new GSpinner(vm);
     case 7:
       return new GGameBar(vm);
     case 4:
@@ -178,10 +185,19 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
       if (w instanceof GPixelLabel) w.setFocusPixelColorTable(a[0]);
       break;
     case 27:
-      if (w instanceof GTextArea) {
-        w.setText(a[0]);
-        w.textColor = n(1);
-      }
+      if (w instanceof GTextArea) w.setTextData(a[0], n(1), n(2), a[3] as unknown as boolean);
+      break;
+    case 28:
+      if (w instanceof GTextArea) w.lineColor = n(0);
+      break;
+    case 34:
+      if (w instanceof GTextArea) w.lineSpace = n(0);
+      break;
+    case 29:
+      if (w instanceof GContainer) w.addScrollBar(GScrollBar.getScrollBar(n(0), n(1), n(2), n(3), n(4)));
+      break;
+    case 45:
+      if (w instanceof GSpinner) w.setSpinnerData(getImageSet(n(0)), n(1), n(2), n(3));
       break;
     case 32:
       if (w instanceof GLinePanel) w.underLineColor = n(0);
@@ -211,8 +227,8 @@ function apply(w: GWidget, c: UICall, lib: UINode[]): void {
     case 47:
       if (w instanceof GLabel) w.setSetting(n(0), true);
       break;
-    // Remaining codes configure widgets whose behaviour is not ported yet (bars, spinners,
-    // image numbers, game icons, scroll bars, line-panel corner data, pixel fonts…).
+    // Not applied: 10/20 (unused by the shipped files), 30 (window focus child), 31 (icon
+    // number data), 48 (view images) — focus/input and GameView.initImage are not ported yet.
   }
 }
 
