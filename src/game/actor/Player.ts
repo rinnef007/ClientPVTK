@@ -1,6 +1,7 @@
 // com.hz.actor.Player: world movement plus the data the UI screens read (bag, money, stats).
 import type { Mission } from '../core/Mission';
 import type { Skill } from '../core/Skill';
+import type { Talent } from '../core/Talent';
 import type { PlayerBag } from './Item';
 import { Model, TYPE_PLAYER } from './Model';
 
@@ -42,6 +43,8 @@ export class Player extends Model {
   /** Learnt skills and formations (Player.skillList / formationList, sent by the server). */
   skillList: Skill[] = [];
   formationList: Skill[] = [];
+  /** Learnt talents (Player.talentList). */
+  talentList: Talent[] = [];
   /** Auto-battle skill slots (skill ids, 0 = empty) and the auto-cast active skill. */
   autoSkillID: number[] = [];
   autoSkillID_Initiative = 0;
@@ -74,6 +77,12 @@ export class Player extends Model {
   /** Player.isAutoSkill: the skill's auto slot index, or -1. */
   isAutoSkill(id: number): number {
     return this.autoSkillID.indexOf(id);
+  }
+
+  /** Player.getTalentListByType. */
+  static getTalentListByType(list: Talent[] | null, type: number): Talent[] | null {
+    if (list == null || list.length === 0) return null;
+    return list.filter((t) => t != null && t.type === type);
   }
 
   /** Player.getSkillListByType. */

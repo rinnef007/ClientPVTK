@@ -2,6 +2,7 @@
 // server at login; nothing here is taken from server data. Icon frames are picked from the item
 // sheet /common/1 without knowing which frame is which item type.
 import { BAG_START, ITEM_TYPE_PET, Item, PlayerBag, SLOT_PET } from '../actor/Item';
+import { Talent } from '../core/Talent';
 import { SKILL_TYPE_ACTIVE, SKILL_TYPE_AUTO, SKILL_TYPE_PASSIVE, Skill } from '../core/Skill';
 import { CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../actor/MyPet';
@@ -104,6 +105,20 @@ export function makeDemoSkills(): Skill[] {
   ];
 }
 
+function talent(rankid: number, name: string, type: number, ranklevel: number, power1: number, powerValue1: number): Talent {
+  return Object.assign(new Talent(), { rankid, name, type, ranklevel, power1, powerValue1, maxTalentLevel: 5 });
+}
+
+/** Made-up talents (not from the game data). */
+export function makeDemoTalents(): Talent[] {
+  return [
+    talent(2, 'Bạo kích (demo)', 0, 2, 27, 3),
+    talent(1, 'Sắc bén (demo)', 0, 1, 28, 5),
+    talent(3, 'Da thép (demo)', 1, 1, 31, 4),
+    talent(4, 'Sinh lực (demo)', 2, 3, 11, 150),
+  ];
+}
+
 function makeDemoPetSkills(): Skill[] {
   return [
     skill(401, 'Cắn xé (demo)', SKILL_TYPE_ACTIVE, 3, { area: 10, skillAtkType: 2, power1: 59, powerValue1: 20, useMP: 10 }),
@@ -148,6 +163,7 @@ export function fillDemoPlayer(p: Player): void {
   DEMO_COMBAT_VALUES.forEach(([k, v]) => p.set(k, v));
   p.missionList = makeDemoMissions();
   p.skillList = makeDemoSkills();
+  p.talentList = makeDemoTalents();
   p.autoSkillID = [301, 0, 0];
   p.autoSkillID_Initiative = 201;
   p.set(5, 12); // skill points
