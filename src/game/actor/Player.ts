@@ -4,8 +4,21 @@ import type { Skill } from '../core/Skill';
 import type { Talent } from '../core/Talent';
 import type { PlayerBag } from './Item';
 import { Model, TYPE_PLAYER } from './Model';
+import { bagAttr, bagAttrAt, bagEquipPowerValue, getItemSetID, getItemSetNum, idiv, sumValue } from './PlayerStats';
 
 const MISSION_SLOTS = 10;
+
+/** Player.addWeaponSkillAtkTime: weapon type → mastery power. */
+const WEAPON_ATK_TIME_POWER: Record<number, number> = {
+  13: 122, 14: 122, 15: 123, 16: 123, 17: 124, 18: 124, 19: 126, 20: 125, 21: 128, 22: 128, 23: 128, 24: 129,
+  34: 174, 35: 190, 36: 190, 37: 192, 38: 192, 39: 194,
+};
+/** Player.addWeaponSkillDamageOrDur: weapon type → (mastery power, general power). */
+const WEAPON_DAMAGE_POWER: Record<number, [number, number]> = {
+  13: [133, 197], 14: [133, 197], 15: [134, 197], 16: [134, 197], 17: [135, 197], 18: [135, 197], 19: [137, 196],
+  20: [136, 197], 21: [139, 197], 22: [139, 197], 23: [139, 197], 24: [140, 196], 34: [175, 196], 35: [191, 197],
+  36: [191, 197], 37: [193, 196], 38: [193, 196], 39: [195, 196],
+};
 
 /** Model.get(index) attribute ids used by the screens (Model.getValue in Java). */
 export const ATTR_EXP = 0;
@@ -135,12 +148,247 @@ export class Player extends Model {
   /** Attribute values by id (sent by the server in the real game). */
   readonly values = new Map<number, number>();
 
+  /**
+   * true: the totals (6–10, 29–78, 200–205, 250) follow Player.get's formulas from the base stats,
+   * equipment and skills, as in the game. false (the offline demo): they are read from `values`.
+   */
+  formulas = false;
+  // Base modifiers Player.get adds to its formulas (the server sends them for monsters; 0 here).
+  hpMax = 0;
+  mpMax = 0;
+  speed = 0;
+  atk_str = 0;
+  atk_agi = 0;
+  atk_magic = 0;
+  def_str = 0;
+  def_agi = 0;
+  def_magic = 0;
+  dodge = 0;
+  hitrate = 0;
+  hitMagic = 0;
+  critical = 0;
+  forceHit = 0;
+  exp_up = 0;
+  wil = 0;
+  tough = 0;
+  block = 0;
+  brkArmor = 0;
+  insight = 0;
+  def_field = 0;
+  back = 0;
+  magic_back = 0;
+  life_absorption = 0;
+  mana_absorption = 0;
+  magic_penetration = 0;
+  heal_recovery = 0;
+  mana_recovery = 0;
+  recovery = 0;
+  argo = 0;
+  atk_time = 0;
+  keepout_atk_time = 0;
+  integral = 0;
+  /** Medicine buffer (Player.power / powerValue), title powers and battle buffer powers. */
+  power = 0;
+  powerValue = 0;
+  titleInfos: [number, number][] = [];
+  fightPowerList: [number, number][] = [];
+  countrypowerValue = 0;
+  formationSkill: Skill | null = null;
+  /** Item-set bonuses: (set id/num, power, value) triples. */
+  itemSetData: number[] = [];
+
   constructor(type = TYPE_PLAYER) {
     super(type);
   }
 
   get(id: number): number {
+    if (this.formulas) {
+      const v = this.getFormula(id);
+      if (v !== undefined) return v;
+    }
     return this.values.get(id) ?? 0;
+  }
+
+  /** Player.getSkillPowerValue: `power` summed over the skills of `type` (1 passive). */
+  getSkillPowerValue(type: number, power: number): number {
+    if (power <= 0) return 0;
+    let v = 0;
+    for (const s of this.skillList) if (s != null && s.type === type) v += s.getPowerValue(power);
+    return v;
+  }
+
+  getSkillByID(id: number): Skill | null {
+    return this.skillList.find((s) => s != null && s.id === id) ?? null;
+  }
+
+  /** Player.getCountryBuffer. */
+  getCountryBuffer(power: number): number {
+    return power === 2 || power === 4 || power === 6 || power === 8 || power === 10 ? this.countrypowerValue : 0;
+  }
+
+  /** Player.getPowerValueByBuffer: medicine, titles, battle buffers and the country bonus. */
+  getPowerValueByBuffer(power: number): number {
+    let v = this.power === power ? this.powerValue : 0;
+    for (const [p, val] of this.titleInfos) if (p === power) v += val;
+    for (const [p, val] of this.fightPowerList) if (p === power) v += val;
+    return v + this.getCountryBuffer(power);
+  }
+
+  /** Player.getBagEquipPowerValue: equipment plus completed item sets (and buffers when asked). */
+  getBagEquipPowerValue(power: number, withBuffer = false): number {
+    if (this.bag == null) return 0;
+    let v = bagEquipPowerValue(this.bag, power);
+    for (let i = 0; i + 2 < this.itemSetData.length; i += 3) {
+      const [set, p, val] = [this.itemSetData[i], this.itemSetData[i + 1], this.itemSetData[i + 2]];
+      if (p === power && this.bag.getEquipItemSetNum(getItemSetID(set)) >= getItemSetNum(set)) v += val;
+    }
+    if (withBuffer) v += this.getPowerValueByBuffer(power);
+    return v;
+  }
+
+  /** Player.getEquipWeaponType: the type of the first usable weapon in slot 8 then 10, or -401. */
+  getEquipWeaponType(): number {
+    if (this.bag == null) return -401;
+    for (const slot of [8, 10]) {
+      const it = this.bag.getItem(slot);
+      if (it != null && it.durability > 0 && it.type !== 24) return it.type;
+    }
+    return -401;
+  }
+
+  /** Player.getBaseValue: a base stat with its absolute and percent powers. */
+  protected getBaseValue(base: number, abs: number, pct: number, type: number, min: number, max: number): number {
+    let a = base + this.getSkillPowerValue(type, abs) + this.getPowerValueByBuffer(abs);
+    let b = this.getSkillPowerValue(type, pct) + this.getBagEquipPowerValue(pct) + this.getPowerValueByBuffer(pct);
+    if (this.formationSkill != null) {
+      a += this.formationSkill.getPowerValue(abs);
+      b += this.formationSkill.getPowerValue(pct);
+    }
+    return sumValue(a + idiv(b * a, 100) + this.getBagEquipPowerValue(abs), 0, min, max);
+  }
+
+  /** Player.getPowerValue: a derived value plus its absolute / percent powers and `extra`. */
+  protected getPowerValue(base: number, extra: number, abs: number, pct: number, type: number, min: number, max: number, unarmed = false): number {
+    let a = base + this.getSkillPowerValue(type, abs) + this.getPowerValueByBuffer(abs);
+    let b = this.getSkillPowerValue(type, pct) + this.getPowerValueByBuffer(pct);
+    if (this.bag != null) {
+      a += this.getBagEquipPowerValue(abs);
+      b += this.getBagEquipPowerValue(pct);
+    }
+    if (this.formationSkill != null) {
+      a += this.formationSkill.getPowerValue(abs);
+      b += this.formationSkill.getPowerValue(pct);
+    }
+    if (unarmed && this.getEquipWeaponType() === -401) {
+      if (this.bag != null) b += this.getBagEquipPowerValue(138);
+      b += this.getSkillPowerValue(1, 138);
+    }
+    return sumValue(a + idiv(b * a, 100), extra, min, max);
+  }
+
+  /** Player.addWeaponSkillAtkTime: weapon mastery attack-time bonuses. */
+  addWeaponSkillAtkTime(v: number, weaponType: number): number {
+    const p = WEAPON_ATK_TIME_POWER[weaponType];
+    const add = p ? this.getSkillPowerValue(1, p) + this.getBagEquipPowerValue(p, true) : 0;
+    return v + add + this.getSkillPowerValue(1, 130) + this.getBagEquipPowerValue(130, true);
+  }
+
+  /** Player.addWeaponSkillDamageOrDur: weapon mastery percent bonuses for the weapon in `slot`. */
+  addWeaponSkillDamageOrDur(v: number, slot: number): number {
+    if (v === 0) return 0;
+    const it = this.bag?.getItem(slot) ?? null;
+    if (it == null) return v;
+    const pair = WEAPON_DAMAGE_POWER[it.type];
+    let add = pair
+      ? this.getSkillPowerValue(1, pair[0]) + this.getBagEquipPowerValue(pair[0]) + this.getSkillPowerValue(1, pair[1]) + this.getBagEquipPowerValue(pair[1])
+      : 0;
+    add += this.getSkillPowerValue(1, 141) + this.getBagEquipPowerValue(141);
+    return add === 0 ? v : v + idiv(add * v, 100);
+  }
+
+  /** The formula part of Player.get (1.2.0); undefined for values read as stored. */
+  protected getFormula(id: number): number | undefined {
+    const bag = this.bag;
+    const lv = () => this.get(106) + this.get(118);
+    switch (id) {
+      case 6: return this.getBaseValue(this.str, 1, 2, 1, 0, 32767);
+      case 7: return this.getBaseValue(this.con, 3, 4, 1, 0, 32767);
+      case 8: return this.getBaseValue(this.agi, 5, 6, 1, 0, 32767);
+      case 9: return this.getBaseValue(this.ilt, 7, 8, 1, 0, 32767);
+      case 10: return this.getBaseValue(this.wis, 9, 10, 1, 0, 32767);
+      case 29: return this.getPowerValue(idiv(this.get(7) * 65, 10) + this.get(6) * 3 + 100 + (lv() - 1) * 40, this.hpMax, 11, 12, 1, 1, 9999999);
+      case 30: return this.getPowerValue(idiv(this.get(9) * 75, 10) + idiv(this.get(10) * 35, 10) + 50 + (lv() - 1) * 10, this.mpMax, 13, 14, 1, 1, 9999999);
+      case 31: return this.getPowerValue(this.get(8) * 3 + idiv(this.get(10) * 15, 10), this.speed, 53, 23, 1, 0, 1000000);
+      case 32: return bag == null ? 0 : bagAttr(bag, 8);
+      case 33: return Math.max(this.get(73), this.get(75));
+      case 34: return Math.max(this.get(74), this.get(76));
+      case 35: {
+        const wt = this.getEquipWeaponType();
+        const t = wt === -401 ? this.getSkillPowerValue(1, 127) + 1 + this.getBagEquipPowerValue(127, true) : this.get(77) + this.get(78);
+        return sumValue(this.addWeaponSkillAtkTime(t, wt), this.atk_time, 1, 99);
+      }
+      case 36: return this.getPowerValue(this.get(8) * 3 + this.get(6) * 5, this.atk_str, 58, 28, 1, 0, 1000000, true);
+      case 37: return this.getPowerValue(this.get(6) * 5 + this.get(8) * 5, this.atk_agi, 59, 29, 1, 0, 1000000, true);
+      case 38: return this.getPowerValue(idiv((this.get(9) * 3 + this.get(10) * 2) * (this.get(44) + 900), 1000), this.atk_magic, 60, 30, 1, 0, 1000000);
+      case 39: return this.getPowerValue(this.get(7) * 8 + (bag ? bagAttr(bag, 1) : 0), this.def_str, 61, 31, 1, 0, 65535);
+      case 40: return this.getPowerValue(this.get(7) * 8 + (bag ? bagAttr(bag, 2) : 0), this.def_agi, 62, 32, 1, 0, 65535);
+      case 41: return this.getPowerValue((this.get(10) * 2 + this.get(9)) * 2 + (bag ? bagAttr(bag, 3) : 0), this.def_magic, 63, 33, 1, 0, 65535);
+      case 42: return this.getPowerValue(idiv((this.get(8) + this.get(10)) * 10, 25), this.dodge, 55, 25, 1, 0, 32767);
+      case 43: {
+        let v = 0;
+        if (bag != null) {
+          let a = bagAttrAt(bag, 4, 8);
+          if (a < 0) a = 0;
+          const b = bagAttrAt(bag, 4, 10);
+          if (b > 0 && (a <= 0 || b < a)) a = b;
+          v = a + idiv(this.get(8), 5);
+        }
+        return this.getPowerValue(v, this.hitrate, 54, 24, 1, 0, 32767);
+      }
+      case 44: return this.getPowerValue(100, this.hitMagic, 56, 26, 1, 20, 32767);
+      case 45: return this.getPowerValue(0, this.critical, 57, 27, 1, 0, 32767);
+      case 46: return this.getPowerValue(30, this.forceHit, 76, 46, 1, 0, 70);
+      case 47: return this.exp_up;
+      case 48: return this.getPowerValue(idiv(this.get(10) * 3 + this.get(9), 10), this.wil, 64, 34, 1, 0, 1000000);
+      case 49: return this.getPowerValue(idiv(this.get(7) * 2 + this.get(6), 10), this.tough, 65, 35, 1, 0, 1000000);
+      case 51: return this.getPowerValue(idiv(this.get(8), 5), this.block, 67, 37, 1, 0, 32767);
+      case 52: return this.getPowerValue(this.get(8) + this.get(6) * 3, this.brkArmor, 69, 39, 1, 0, 32767);
+      case 53: return this.getPowerValue(idiv(this.get(10) * 2 + this.get(9), 10), this.insight, 68, 38, 1, 0, 32767);
+      case 54: return this.getPowerValue(this.get(9) * 2 + this.get(10) * 3, this.def_field, 70, 40, 1, 0, 32767);
+      case 55: return this.getPowerValue(0, this.back, 71, 41, 1, 0, 32767);
+      case 56: return this.getPowerValue(0, this.magic_back, 72, 42, 1, 0, 32767);
+      case 57: return this.getPowerValue(0, this.life_absorption, 73, 43, 1, 0, 1000);
+      case 58: return this.getPowerValue(0, this.mana_absorption, 74, 44, 1, 0, 1000);
+      case 59: return this.getPowerValue(this.get(10) + this.get(9) * 2, this.magic_penetration, 75, 45, 1, 0, 32767);
+      case 60: return this.getPowerValue(0, this.heal_recovery, 77, 47, 1, 0, 32767);
+      case 61: return this.getPowerValue(0, this.mana_recovery, 78, 48, 1, 0, 32767);
+      case 62: return this.recovery;
+      case 63: return this.argo;
+      case 64: return 70;
+      case 68: return this.integral;
+      case 71: return bag == null ? -1 : bagAttrAt(bag, 9, 8);
+      case 72: return bag == null ? -1 : bagAttrAt(bag, 9, 10);
+      case 73:
+      case 74:
+      case 75:
+      case 76: {
+        // Weapon damage min / max of the main (8) and off (10) hand.
+        if (bag == null) return 0;
+        const slot = id <= 74 ? 8 : 10;
+        const v = Math.max(0, bagAttrAt(bag, id === 73 || id === 75 ? 5 : 6, slot));
+        return sumValue(this.addWeaponSkillDamageOrDur(v, slot), 0, 0, 99999999);
+      }
+      case 77:
+      case 78: {
+        if (bag == null) return sumValue(1, 0, 1, 99);
+        const v = bagAttrAt(bag, 7, id === 77 ? 8 : 10);
+        return v < 0 ? 0 : sumValue(v + 1, 0, 1, 99);
+      }
+      case 200: case 201: case 202: case 203: case 204: case 205:
+        return this.getPowerValue(0, 0, 168 + (id - 200), 0, 1, 0, 32767);
+      case 250: return this.getPowerValue(0, this.keepout_atk_time, 178, 0, 1, 0, 100);
+      default: return undefined;
+    }
   }
 
   set(id: number, v: number): void {

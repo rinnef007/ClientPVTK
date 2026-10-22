@@ -68,6 +68,11 @@ export interface PlayerDetail {
   autoSkillID: number[];
   autoSkillID_Initiative: number;
   enchantValue: number;
+  itemSetData: number[];
+  power: number;
+  powerValue: number;
+  titleInfos: [number, number][];
+  countrypowerValue: number;
 }
 
 /** MyPet.fromBytesDetail (the active pet), null when the id byte is negative. */
@@ -161,21 +166,20 @@ export function readPlayerDetail(m: Message): PlayerDetail {
   const autoSkillID: number[] = [];
   for (let i = m.getByte(); i > 0; i--) autoSkillID.push(m.getShort());
   const autoSkillID_Initiative = m.getShort();
-  for (let i = m.getByte(); i > 0; i--) m.getShort(); // fromItemSetData
-  u8(m); // power (medicine)
-  m.getShort(); // powerValue
-  for (let i = m.getByte(); i > 0; i--) {
-    u8(m); // titleInfos: power
-    m.getShort(); // value
-  }
-  m.getByte(); // countrypowerValue
+  const itemSetData: number[] = [];
+  for (let i = m.getByte(); i > 0; i--) itemSetData.push(m.getShort()); // fromItemSetData
+  const power = u8(m); // medicine
+  const powerValue = m.getShort();
+  const titleInfos: [number, number][] = [];
+  for (let i = m.getByte(); i > 0; i--) titleInfos.push([u8(m), m.getShort()]);
+  const countrypowerValue = m.getByte();
   const enchantValue = m.getInt();
   m.getByte(); // MoveWarehouseLevel
   return {
     id, name, title, sex, race, job, level, level2, exp2, expMax2, icon1, icon2, icon3, setting, countryName, exp,
     expMax, hp, mp, cp, sp, str, con, agi, ilt, wis, money1, money2, money3, killCount, Pkwincount, Pklosecount,
     masterFlag, partnerName, helpCountry, lovePlayer, arenaPoint, skyarenaPoint, combatPoint, vipLevel, vipLevel2,
-    autoSkillID, autoSkillID_Initiative, enchantValue,
+    autoSkillID, autoSkillID_Initiative, enchantValue, itemSetData, power, powerValue, titleInfos, countrypowerValue,
   };
 }
 
@@ -254,21 +258,25 @@ export function readPetDetail(m: Message): PetDetail | null {
 
 /** Item.fromItemAscensionStarInfo. */
 function readAscension(m: Message, it: Item): void {
-  for (let i = 0; i < 3; i++) m.getShort(); // def_str, def_agi, def_mag
-  for (let i = 0; i < 3; i++) {
-    u8(m); // power1..3
-    m.getShort();
-  }
+  it.def_str = m.getShort();
+  it.def_agi = m.getShort();
+  it.def_mag = m.getShort();
+  it.power1 = u8(m);
+  it.powerValue1 = m.getShort();
+  it.power2 = u8(m);
+  it.powerValue2 = m.getShort();
+  it.power3 = u8(m);
+  it.powerValue3 = m.getShort();
   m.getString(); // skillDesc
-  for (let i = 0; i < 2; i++) {
-    u8(m); // bindPower1..2
-    m.getShort();
-  }
+  it.bindPower1 = u8(m);
+  it.bindPowerValue1 = m.getShort();
+  it.bindPower2 = u8(m);
+  it.bindPowerValue2 = m.getShort();
   if (it.getItemClass() === 1) {
-    m.getByte(); // atkType
-    m.getByte(); // atk_time
-    m.getShort(); // atkMin
-    m.getShort(); // atkMax
+    it.atkType = m.getByte();
+    it.atk_time = m.getByte();
+    it.atkMin = m.getShort();
+    it.atkMax = m.getShort();
   }
   it.ascensionStar = m.getByte();
   it.star = m.getByte();
@@ -276,12 +284,16 @@ function readAscension(m: Message, it: Item): void {
 
 /** The tail shared by weapons (class 1) and armour (class 2), after the class-specific part. */
 function readEquipTail(m: Message, it: Item): void {
-  m.getByte(); // vipLevelReq
-  for (let i = 0; i < 4; i++) m.getShort(); // enchantPower1/Value1/Power2/Value2
+  it.vipLevelReq = m.getByte();
+  it.enchantPower1 = m.getShort();
+  it.enchantPowerValue1 = m.getShort();
+  it.enchantPower2 = m.getShort();
+  it.enchantPowerValue2 = m.getShort();
   it.isUpgradeItem = m.getBoolean();
-  if (it.isUpgradeItem) for (let i = 0; i < 8; i++) m.getShort(); // power4..7 and values
-  m.getByte(); // upgradeAscensionStar
-  m.getByte(); // upgradeStar
+  it.upgradePowers = [];
+  if (it.isUpgradeItem) for (let i = 0; i < 8; i++) it.upgradePowers.push(m.getShort()); // power4..7, values
+  it.upgradeAscensionStar = m.getByte();
+  it.upgradeStar = m.getByte();
 }
 
 /** Item.fromBytes: fromBytesAtts1 (bag state) then fromBytesAtts2 (the item's data by class). */
@@ -295,18 +307,18 @@ export function readItem(m: Message): Item {
 /** Item.fromBytesAtts1: count, durability, attachment, slot and the time limit. */
 function readItemAtts1(m: Message, it: Item): void {
   it.quantity = m.getShort();
-  m.getShort(); // durability
+  it.durability = m.getShort();
   it.attachDone = m.getByte();
-  u8(m); // attachPower
-  m.getShort(); // attachValue
+  it.attachPower = u8(m);
+  it.attachValue = m.getShort();
   it.slotPos = m.getShort();
-  const status = m.getShort();
-  if ((status & 1) > 0) {
-    // Item.isTimeItem: minutes left (an int for the fashion slot 17).
+  it.status = m.getShort();
+  if (it.isTimeItem()) {
+    // Minutes left (an int for the fashion slot 17).
     const minutes = it.slotPos === 17 ? m.getInt() : u16(m);
     it.expireTime = Date.now() + minutes * 60000;
   }
-  it.binded = (status & 2) !== 0;
+  it.binded = it.isBinded();
 }
 
 /** Item.fromBytesAtts2: type, then the data of the item's class (shop goods start here). */
@@ -319,10 +331,10 @@ export function readItemAtts2(m: Message, it: Item): void {
     it.bagIcon = u8(m);
     it.info = m.getString();
     it.grade = m.getByte();
-    m.getByte(); // autoBinding
+    it.autoBinding = m.getByte();
     it.icon = BigInt(m.getShort());
     it.reqLv = m.getByte();
-    m.getByte(); // vipLevelReq
+    it.vipLevelReq = m.getByte();
     return;
   }
   it.id = u16(m);
@@ -330,7 +342,7 @@ export function readItemAtts2(m: Message, it: Item): void {
   it.bagIcon = u8(m);
   it.info = m.getString();
   it.grade = m.getByte();
-  m.getByte(); // autoBinding
+  it.autoBinding = m.getByte();
   it.stackNum = m.getByte();
   if (cls === 1 || cls === 2) {
     it.icon = BigInt(m.getShort());
@@ -338,11 +350,12 @@ export function readItemAtts2(m: Message, it: Item): void {
     u8(m); // durMax
     it.price = m.getInt();
     m.getByte(); // attachCount
-    it.itemSetID = m.getByte();
+    it.itemSet = m.getByte();
+    it.itemSetID = it.itemSet & 0xff;
     it.reqLv = m.getByte();
     for (let i = 0; i < 5; i++) m.getShort(); // reqStr … reqWis
     readAscension(m, it);
-    if (cls === 1) m.getByte(); // hitrate
+    if (cls === 1) it.hitrate = m.getByte();
     else if (it.type === 12) for (let i = 0; i < 3; i++) m.getLong(); // fashIcon1..3
     readEquipTail(m, it);
   } else if (cls === 4) {
@@ -350,21 +363,21 @@ export function readItemAtts2(m: Message, it: Item): void {
     u16(m); // ownTime
     u8(m); // durMax
     it.price = m.getInt();
-    m.getByte(); // round
-    m.getByte(); // area
-    const power1 = u8(m);
-    m.getShort();
-    u8(m); // power2
-    m.getShort();
-    m.getByte(); // vipLevelReq
-    if (power1 === 181) {
-      u8(m); // power3
-      m.getShort();
+    it.round = m.getByte();
+    it.area = m.getByte();
+    it.power1 = u8(m);
+    it.powerValue1 = m.getShort();
+    it.power2 = u8(m);
+    it.powerValue2 = m.getShort();
+    it.vipLevelReq = m.getByte();
+    if (it.power1 === 181) {
+      it.power3 = u8(m);
+      it.powerValue3 = m.getShort();
     }
   } else if (cls === 6) {
     it.price = m.getInt();
-    u8(m); // power1
-    m.getShort();
+    it.power1 = u8(m);
+    it.powerValue1 = m.getShort();
   } else if (cls === 5 || cls === 7) {
     it.price = m.getInt();
   }

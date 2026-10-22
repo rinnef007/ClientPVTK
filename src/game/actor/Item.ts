@@ -46,6 +46,45 @@ export class Item {
   /** Most per bag slot (Item.stackNum); 1 = does not stack. */
   stackNum = 1;
 
+  // Battle data (Item.fromBytesAtts1/2, 1.2.0): what Item.get / getPowerValue read.
+  durability = 1;
+  status = 0;
+  autoBinding = 0;
+  attachPower = 0;
+  attachValue = 0;
+  itemSet = 0;
+  hitrate = 0;
+  def_str = 0;
+  def_agi = 0;
+  def_mag = 0;
+  atkType = 0;
+  atk_time = 0;
+  atkMin = 0;
+  atkMax = 0;
+  area = 0;
+  round = 0;
+  vipLevelReq = 0;
+  power1 = 0;
+  powerValue1 = 0;
+  power2 = 0;
+  powerValue2 = 0;
+  power3 = 0;
+  powerValue3 = 0;
+  bindPower1 = 0;
+  bindPowerValue1 = 0;
+  bindPower2 = 0;
+  bindPowerValue2 = 0;
+  enchantPower1 = 0;
+  enchantPowerValue1 = 0;
+  enchantPower2 = 0;
+  enchantPowerValue2 = 0;
+  /** power4..7 and values of upgrade items, used when Item.isUpgradeItemOpen. */
+  upgradePowers: number[] = [];
+  upgradeAscensionStar = 0;
+  upgradeStar = 0;
+  /** Item.isUpgradeItemOpen (server switch; off unless the server says so). */
+  static isUpgradeItemOpen = false;
+
   isEquited(): boolean {
     return this.slotPos >= 0 && this.slotPos < BAG_START;
   }
@@ -106,6 +145,87 @@ export class Item {
     return this.itemSetID;
   }
 
+  isTimeItem(): boolean {
+    return (this.status & 1) > 0;
+  }
+  isTimeItemTimeOut(): boolean {
+    return (this.status & 8) > 0;
+  }
+  isVipItem(): boolean {
+    return this.vipLevelReq > 0;
+  }
+  isVipItemTimeOut(): boolean {
+    return (this.status & 64) > 0;
+  }
+  /** Item.isBinded: auto-binding or status bit 2. */
+  isBinded(): boolean {
+    return this.autoBinding !== 0 || (this.status & 2) > 0;
+  }
+  isCanEquip(): boolean {
+    const t = this.type;
+    return (t >= 0 && t <= 24) || t === 32 || (t >= 34 && t <= 39);
+  }
+  isRebornItem(): boolean {
+    return this.power1 === 80 || this.power1 === 97 || this.power2 === 80 || this.power2 === 97;
+  }
+  getItemHitRate(): number {
+    return this.hitrate & 0xff;
+  }
+
+  /** Item.get (1.2.0): the attribute an equipped item gives (0 when broken or expired). */
+  getAttr(n: number): number {
+    if (n === 9) return this.durability > 0 ? this.type : -400;
+    if (this.durability <= 0) return 0;
+    if (this.isTimeItem() && this.isTimeItemTimeOut()) return 0;
+    if (this.isVipItem() && this.isVipItemTimeOut()) return 0;
+    switch (n) {
+      case 1: return this.def_str;
+      case 2: return this.def_agi;
+      case 3: return this.def_mag;
+      case 4: return this.getItemHitRate();
+      case 5: return this.atkMin;
+      case 6: return this.atkMax;
+      case 7: return this.type === 24 ? -1 : this.atk_time;
+      case 8: return this.type === 24 ? -1 : this.atkType;
+      case 10: return this.getItemSetID();
+      default: return 0;
+    }
+  }
+
+  /** Item.getPower1AndPower2: power 1–3 with the ascension bonus. */
+  getPower1AndPower2(power: number): number {
+    let v = 0;
+    const b = this.isBinded();
+    if (this.power1 === power) v += getpowerValueAdd(this.powerValue1, this.ascensionStar, this.star, b, isAscension(this.power1));
+    if (this.power2 === power) v += getpowerValueAdd(this.powerValue2, this.ascensionStar, this.star, b, isAscension(this.power2));
+    if (this.power3 === power) v += getpowerValueAdd(this.powerValue3, this.ascensionStar, this.star, b, isAscension(this.power3));
+    return v;
+  }
+
+  /** Item.getPowerValue: every source of `power` on the item (bound, gem, enchant, upgrade). */
+  getPowerValue(power: number): number {
+    if (this.durability <= 0) return 0;
+    if (this.isTimeItem() && this.isTimeItemTimeOut()) return 0;
+    if (this.isVipItem() && this.isVipItemTimeOut()) return 0;
+    let v = this.getPower1AndPower2(power);
+    const b = this.isBinded();
+    if (b) {
+      if (this.bindPower1 === power) v += getpowerValueAdd(this.bindPowerValue1, this.ascensionStar, this.star, b, isAscension(this.bindPower1));
+      if (this.bindPower2 === power) v += getpowerValueAdd(this.bindPowerValue2, this.ascensionStar, this.star, b, isAscension(this.bindPower2));
+    }
+    if (this.attachPower === power) v += this.attachValue;
+    if (this.enchantPower1 === power) v += this.enchantPowerValue1;
+    if (this.enchantPower2 === power) v += this.enchantPowerValue2;
+    if (b && Item.isUpgradeItemOpen) {
+      for (let i = 0; i + 1 < this.upgradePowers.length; i += 2) {
+        if (this.upgradePowers[i] === power) {
+          v += getpowerValueAdd(this.upgradePowers[i + 1], this.upgradeAscensionStar, this.upgradeStar, b, isAscension(power));
+        }
+      }
+    }
+    return v;
+  }
+
   /** Item.getPrice: the selling price (ShopItem overrides it with the buying price). */
   getPrice(): number {
     return this.price;
@@ -121,6 +241,21 @@ export class Item {
     const info = this.getInfo();
     return this.getPowerDesc() + (info ? `\n${info}` : '');
   }
+}
+
+/** Item.isAscension: powers the ascension stars do not raise return false. */
+export function isAscension(p: number): boolean {
+  if (p === 121 || p === 131 || p === 176 || p === 177) return false;
+  if ((p >= 80 && p <= 82) || (p >= 84 && p <= 97) || (p >= 99 && p <= 119)) return false;
+  if ((p >= 145 && p <= 166) || (p >= 179 && p <= 186)) return false;
+  return true;
+}
+
+/** Item.getpowerValueAdd: a bound item's power grows by |value| × ascension × star / 100 (rounded). */
+export function getpowerValueAdd(value: number, ascension: number, star: number, binded: boolean, ascend: boolean): number {
+  if (!binded || !ascend || ascension <= 0 || star <= 0) return value;
+  const v = Math.trunc((Math.abs(value) * ascension * star + 50) / 100) + value;
+  return Math.min(v, 32767);
 }
 
 /** One of an item kind, as a plain Item (ShopItem.m325clone keeps only the Item part). */

@@ -5,8 +5,7 @@
 import { NPC } from '../actor/NPC';
 import { PlayerBag } from '../actor/Item';
 import {
-  ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP,
-  ATTR_MP_MAX, type Player,
+  ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, type Player,
 } from '../actor/Player';
 import { Mission } from '../core/Mission';
 import { GameMap } from '../map/GameMap';
@@ -27,8 +26,8 @@ export async function buildOnlineMap(enter: EnterGameData): Promise<GameMap | nu
 }
 
 /**
- * Player.fromBytes values onto the web Player. The maximum HP / MP are computed from attributes and
- * equipment in Java (not ported), so the current values stand in for them.
+ * Player.fromBytes values onto the web Player; the totals (max HP / MP, attack, defence…) then come
+ * from Player.get's formulas (`formulas`), as in the game.
  */
 export function applyPlayerDetail(p: Player, d: PlayerDetail, enter: EnterGameData): void {
   p.id = d.id;
@@ -45,10 +44,15 @@ export function applyPlayerDetail(p: Player, d: PlayerDetail, enter: EnterGameDa
   p.set(ATTR_LEVEL, d.level);
   p.set(ATTR_EXP, d.exp);
   p.set(ATTR_EXP_MAX, d.expMax);
+  p.formulas = true;
   p.set(ATTR_HP, d.hp);
-  p.set(ATTR_HP_MAX, d.hp);
   p.set(ATTR_MP, d.mp);
-  p.set(ATTR_MP_MAX, d.mp);
+  p.set(4, d.cp);
+  p.itemSetData = d.itemSetData;
+  p.power = d.power;
+  p.powerValue = d.powerValue;
+  p.titleInfos = d.titleInfos;
+  p.countrypowerValue = d.countrypowerValue;
   p.set(ATTR_MONEY1, d.money1);
   p.set(ATTR_MONEY2, d.money2);
   p.set(ATTR_MONEY3, d.money3);

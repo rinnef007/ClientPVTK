@@ -219,6 +219,14 @@ export class Skill {
   statusBit1 = 0;
   statusBit2 = 0;
   statusBit3 = 0;
+  /** Skill.getPowerValue: the value of `power` among the skill's three powers. */
+  getPowerValue(power: number): number {
+    let v = 0;
+    if (this.power1 === power) v += this.powerValue1;
+    if (this.power2 === power) v += this.powerValue2;
+    if (this.power3 === power) v += this.powerValue3;
+    return v;
+  }
   isLearnByBook = false;
   isDefault = false;
 
