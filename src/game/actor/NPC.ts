@@ -63,6 +63,9 @@ export class NPC extends Model {
   setVisible(v: boolean): void {
     this.visible = v;
   }
+  setEnable(v: boolean): void {
+    this.enable = v;
+  }
   isEnable(): boolean {
     return this.enable;
   }

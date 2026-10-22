@@ -4,6 +4,7 @@ import { AssetViewerScene } from './AssetViewerScene';
 import { DressingRoomScene } from './DressingRoomScene';
 import { MapScene } from './MapScene';
 import { NetTestScene } from './NetTestScene';
+import { OnlineLoginScene } from './OnlineLoginScene';
 import { SCREEN_WIDTH, type Context, type Scene } from './Scene';
 import { drawFrame, drawList, drawParagraph, listIndexAt, softKeyAt } from './ui';
 import { SplashScene } from './SplashScene';
@@ -19,6 +20,7 @@ export class MenuScene implements Scene {
   constructor(private readonly ctx: Context) {
     this.items = [
       { label: 'Bản đồ thử', open: () => new MapScene(ctx) },
+      { label: 'Vào server riêng (BE)', open: () => new OnlineLoginScene(ctx) },
       { label: 'Thay trang phục', open: () => new DressingRoomScene(ctx) },
       { label: 'Xem sprite / animation', open: () => new SpriteViewerScene(ctx) },
       { label: 'Xem giao diện (.ui)', open: () => new UIViewerScene(ctx) },

@@ -1,0 +1,91 @@
+// Builds the world from the user's backend: the map of the enter-game reply (MsgHandler.parseMapData),
+// the player's own data (Player.fromBytes values, bag and skills) and the map's NPCs
+// (NPC.fromBytes → NPC.init / initSprite). The parts of the Java client these values would feed
+// that are not ported yet (pet, missions, formations…) are left empty.
+import { NPC } from '../actor/NPC';
+import { PlayerBag } from '../actor/Item';
+import {
+  ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP,
+  ATTR_MP_MAX, type Player,
+} from '../actor/Player';
+import { GameMap } from '../map/GameMap';
+import { GameSprite, preloadSprite } from '../sprite/GameSprite';
+import type { EnterGameData, PlayerDetail } from '../../net/online/EnterGame';
+import { gunzip, type NpcData } from '../../net/online/WorldData';
+
+const ATTR_SKILL_POINTS = 5;
+
+/** parseMapData: inflate if gzip, GameMap.loadMap, then the id and name from the reply. */
+export async function buildOnlineMap(enter: EnterGameData): Promise<GameMap | null> {
+  if (enter.mapBytes == null || enter.mapBytes.length === 0) return null;
+  const map = GameMap.loadMap(await gunzip(enter.mapBytes));
+  if (map == null) return null;
+  map.setMapID(enter.mapId);
+  map.name = enter.mapName;
+  return map;
+}
+
+/**
+ * Player.fromBytes values onto the web Player. The maximum HP / MP are computed from attributes and
+ * equipment in Java (not ported), so the current values stand in for them.
+ */
+export function applyPlayerDetail(p: Player, d: PlayerDetail, enter: EnterGameData): void {
+  p.id = d.id;
+  p.name = d.name;
+  p.title = d.title;
+  p.job = d.job;
+  p.race = d.race;
+  p.level2 = d.level2;
+  p.exp2 = d.exp2;
+  p.expMax2 = d.expMax2;
+  p.setting = d.setting;
+  p.countryName = d.countryName;
+  [p.str, p.con, p.agi, p.ilt, p.wis] = [d.str, d.con, d.agi, d.ilt, d.wis];
+  p.set(ATTR_LEVEL, d.level);
+  p.set(ATTR_EXP, d.exp);
+  p.set(ATTR_EXP_MAX, d.expMax);
+  p.set(ATTR_HP, d.hp);
+  p.set(ATTR_HP_MAX, d.hp);
+  p.set(ATTR_MP, d.mp);
+  p.set(ATTR_MP_MAX, d.mp);
+  p.set(ATTR_MONEY1, d.money1);
+  p.set(ATTR_MONEY2, d.money2);
+  p.set(ATTR_MONEY3, d.money3);
+  p.set(ATTR_SKILL_POINTS, d.sp);
+  Object.assign(p, {
+    Pkwincount: d.Pkwincount, Pklosecount: d.Pklosecount, masterFlag: d.masterFlag, partnerName: d.partnerName,
+    helpCountry: d.helpCountry, lovePlayer: d.lovePlayer, arenaPoint: d.arenaPoint, skyarenaPoint: d.skyarenaPoint,
+    combatPoint: d.combatPoint, vipLevel: d.vipLevel, vipLevel2: d.vipLevel2, enchantValue: d.enchantValue,
+    autoSkillID: d.autoSkillID, autoSkillID_Initiative: d.autoSkillID_Initiative,
+  });
+  // PlayerBag.initBagItem: each item into its slot.
+  const bag = new PlayerBag();
+  for (const it of enter.items) bag.setItem(it.slotPos, it);
+  p.bag = bag;
+  p.skillList = enter.skills;
+  if (enter.missionStatus) p.missionStatus.set(enter.missionStatus.subarray(0, p.missionStatus.length));
+  p.setPosition(enter.gx, enter.gy);
+}
+
+/** NPC.loadNPC + init + initSprite: one NPC per entry, its sprite from icon1. */
+export async function buildOnlineNpcs(list: NpcData[]): Promise<NPC[]> {
+  await Promise.all([...new Set(list.map((d) => d.icon1).filter((id) => id > 0))].map(preloadSprite));
+  return list.map((d) => {
+    const n = new NPC();
+    n.id = d.id;
+    n.name = d.name;
+    n.npcType = d.npcType;
+    n.status = d.status;
+    n.setSign(d.sign);
+    n.talkDetail = d.talkDetail || null;
+    n.topic = d.topic;
+    n.shopID = d.shopID;
+    n.setSource(d.gx, d.gy, d.rangeX, d.rangeY);
+    n.setVisible((d.status & 1) !== 0);
+    n.setEnable((d.status & 2) !== 0);
+    n.setDir(d.dir);
+    if (d.icon1 > 0) n.setPlayerSprite(GameSprite.createSprite(d.icon1));
+    n.setAnimationByDir(false);
+    return n;
+  });
+}

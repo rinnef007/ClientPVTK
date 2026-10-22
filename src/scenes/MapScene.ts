@@ -26,6 +26,8 @@ import { setOnQuitGame } from '../game/ui/UIAction';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles, type HudPetInfo } from '../game/ui/WorldHud';
 import { MyPet } from '../game/actor/MyPet';
 import * as WorldMessage from '../game/main/WorldMessage';
+import { applyPlayerDetail, buildOnlineMap, buildOnlineNpcs } from '../game/main/OnlineWorld';
+import type { OnlineWorld } from '../net/online/LoginFlow';
 import { DEMO_SHOP_ID, fillDemoPlayer, makeDemoNpcMissions, makeDemoShopGoods } from '../game/demo/DemoData';
 import { setDemoShop } from '../game/main/ShopServer';
 import { TYPE_SHOP_ITEM } from '../game/ui/screens/shop';
@@ -75,7 +77,11 @@ const OTHER_PLAYERS: Partial<Appearance>[] = [
 ];
 
 async function dressedSprite(a: Appearance): Promise<GameSprite | null> {
-  const [i1, i2, i3] = encodeIcons(a);
+  return iconSprite(...encodeIcons(a));
+}
+
+/** Player.refreshWorldSprite: the character sprite from its three icon longs, images loaded. */
+async function iconSprite(i1: bigint, i2: bigint, i3: bigint): Promise<GameSprite | null> {
   const s = await resolveSprite(() => createSpriteByIcon(i1, i2, i3, false));
   const parts = [...(s?.fragmentFiles ?? []), ...(s?.cloakSprite?.fragmentFiles ?? [])];
   await Promise.all(parts.map((f) => f?.gameImage?.getImage()?.ready));
@@ -99,8 +105,14 @@ export class MapScene implements Scene {
   private hud: WorldHud | null = null;
   private showHud = true;
 
-  constructor(private readonly ctx: Context) {
-    void this.load();
+  /** `online`: the world from the user's backend (OnlineLoginScene); null runs the offline demo. */
+  constructor(
+    private readonly ctx: Context,
+    private readonly online: OnlineWorld | null = null,
+  ) {
+    void this.load().catch((e) => {
+      this.status = `Lỗi: ${e instanceof Error ? e.message : e}`;
+    });
   }
 
   /** UIHandler.createUIFromXML(211) with everything it draws preloaded. */
@@ -115,35 +127,93 @@ export class MapScene implements Scene {
   }
 
   private async load(): Promise<void> {
-    const map = GameMap.loadMap(buildTestMap());
+    const online = this.online;
+    const map = online ? await buildOnlineMap(online.enter) : GameMap.loadMap(buildTestMap());
     if (!map) {
       this.status = 'Lỗi đọc dữ liệu bản đồ';
       return;
     }
     await Promise.all([...TEST_MAP_SPRITES, SPRITE_POINTER_EFFECT, SPRITE_LEVUP_UP, SPRITE_MYPLAYER_POS, ...PET_SPRITES].map(preloadSprite));
     initMyPlayerEffect();
-    const mySprite = await dressedSprite(currentAppearance);
+    const detail = online?.enter.player ?? null;
+    const myIcons: [bigint, bigint, bigint] = detail ? [detail.icon1, detail.icon2, detail.icon3] : encodeIcons(currentAppearance);
+    const mySprite = await iconSprite(...myIcons);
     if (!mySprite) {
       this.status = 'Không dựng được nhân vật';
       return;
     }
+    const me = new Player();
+    me.setPlayerSprite(mySprite);
+    me.setAnimationByDir(false);
+    if (online && detail) {
+      applyPlayerDetail(me, detail, online.enter);
+      online.session.net.getMapId = () => map.getMapID();
+    } else {
+      me.id = 1;
+      me.name = 'Bạn';
+      me.setPosition(20, 17);
+      fillDemoPlayer(me);
+    }
+    GameStore.applyLoginSetting(me);
+    me.initFollowPos();
+    me.getPet()?.setAnimationByDir(false);
+    if (online) await this.loadOnline(map, me, online);
+    else await this.loadDemo(map, me);
+  }
+
+  /** The world of the user's backend: its map, the player, its NPCs; no other players or demo data yet. */
+  private async loadOnline(map: GameMap, me: Player, online: OnlineWorld): Promise<void> {
     const hud = await this.loadHud();
     map.initGameMapData(SCREEN_WIDTH, SCREEN_HEIGHT, hud ? 0 : HUD_H, 0);
     map.loadMapPalette();
     map.getPlayerLayer()?.createMapSprites();
     await map.whenImagesReady();
+    const npcs = await buildOnlineNpcs(online.npcs);
+    await Promise.all(npcs.flatMap((n) => (n.getPlayerSprite()?.fragmentFiles ?? []).map((f) => f?.gameImage?.getImage()?.ready)));
+    this.pointerTemplate = GameSprite.createSprite(SPRITE_POINTER_EFFECT);
+    GameWorld.setGameMap(map);
+    GameWorld.setMyPlayer(me);
+    GameWorld.otherModels.clear();
+    GameWorld.setNpcList(npcs);
+    GameWorld.setDoNpc(doNpc);
+    WorldPanel.clearMyMove();
+    map.models = [me, ...npcs];
+    map.camera = me;
+    map.init();
+    if (hud) {
+      this.headSprite = await resolveSprite(() => createHeadSpriteByIcon(online.enter.player?.icon1 ?? 0n));
+      this.setupHud(hud, me, map);
+      WorldMessage.addNoticeMsg(`Đã vào ${online.areaName || 'server riêng'}: ${map.name}. Dữ liệu từ server của bạn.`);
+    }
+    GameWorld.setMotion(isMotion);
+    setOnQuitGame(() => this.leave());
+    this.hud = hud;
+    this.others = [];
+    this.map = map;
+  }
 
-    const me = new Player();
-    me.id = 1;
-    me.name = 'Bạn';
-    me.setPosition(20, 17);
-    me.setPlayerSprite(mySprite);
-    me.setAnimationByDir(false);
-    fillDemoPlayer(me);
-    GameStore.applyLoginSetting(me);
-    me.initFollowPos();
-    me.getPet()?.setAnimationByDir(false);
+  /** HUD, mini map and the world message areas (shared by both modes). */
+  private setupHud(hud: WorldHud, me: Player, map: GameMap): void {
+    this.hud = hud;
+    this.refreshHud(me);
+    const mini = hud.get(EVENT_ALL_INFO_SMALL_MAP);
+    GameMap.initSmallMapWidth(mini, SCREEN_WIDTH, map);
+    Object.assign(msgEnv, { width: uiScreen.width, height: uiScreen.height, font: uiFont });
+    WorldMessage.clearAll();
+    clearChatHistory();
+    WorldMessage.initWorldShowLocation((ev) => hud.get(ev), true);
+    WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
+    // Leaving the world map (stage 60) returns to the world stage with the HUD's chat area.
+    WorldMap.onExit = () => WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
+  }
 
+  /** The offline test map: demo players, NPCs, missions and shop (all made-up data). */
+  private async loadDemo(map: GameMap, me: Player): Promise<void> {
+    const hud = await this.loadHud();
+    map.initGameMapData(SCREEN_WIDTH, SCREEN_HEIGHT, hud ? 0 : HUD_H, 0);
+    map.loadMapPalette();
+    map.getPlayerLayer()?.createMapSprites();
+    await map.whenImagesReady();
     const others: Model[] = [];
     for (let i = 0; i < OTHER_PLAYERS.length; i++) {
       const s = await dressedSprite({ ...DEFAULT_APPEARANCE, ...OTHER_PLAYERS[i] });
@@ -210,17 +280,7 @@ export class MapScene implements Scene {
     if (hud) {
       const [icon1] = encodeIcons(currentAppearance);
       this.headSprite = await resolveSprite(() => createHeadSpriteByIcon(icon1));
-      this.hud = hud;
-      this.refreshHud(me);
-      const mini = hud.get(EVENT_ALL_INFO_SMALL_MAP);
-      GameMap.initSmallMapWidth(mini, SCREEN_WIDTH, map);
-      Object.assign(msgEnv, { width: uiScreen.width, height: uiScreen.height, font: uiFont });
-      WorldMessage.clearAll();
-      clearChatHistory();
-      WorldMessage.initWorldShowLocation((ev) => hud.get(ev), true);
-      WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
-      // Leaving the world map (stage 60) returns to the world stage with the HUD's chat area.
-      WorldMap.onExit = () => WorldMessage.initWorldShowLocation((ev) => hud.get(ev), false);
+      this.setupHud(hud, me, map);
       WorldMessage.addNoticeMsg('Chào mừng đến bản đồ thử (offline). Mọi số liệu và tin nhắn ở đây đều là dữ liệu giả.');
       WorldMessage.addPointMsg('Nhiệm vụ: nói chuyện với NPC có dấu ! (xem chấm nhấp nháy trên bản đồ nhỏ).');
     }
@@ -271,6 +331,11 @@ export class MapScene implements Scene {
   }
 
   update(input: InputState): void {
+    // MsgHandler.handleMessages: the backend's pushes (other players, chat…) are not handled yet.
+    if (this.online) {
+      this.online.session.pump();
+      this.online.session.takeUnhandled();
+    }
     // Stage 60 (world map): the map and its dialogs take the input; the world does not run.
     if (WorldMap.isActive()) {
       uiClock.tick++;
@@ -289,10 +354,10 @@ export class MapScene implements Scene {
     if (key === KEY_SOFT_LEFT) this.map?.setTag(TAG_MAP_IMG_OFF, !this.map.isTag(TAG_MAP_IMG_OFF));
     if (key === KEY_FIRE) this.showGrid = !this.showGrid;
     if (key === KEY_STAR) this.showHud = !this.showHud;
-    if (key === KEY_NUM0 && GameWorld.myPlayer) this.simulateLevelUp(GameWorld.myPlayer);
+    if (key === KEY_NUM0 && GameWorld.myPlayer && !this.online) this.simulateLevelUp(GameWorld.myPlayer);
     uiClock.tick++;
     WorldMessage.logic();
-    if (this.hud && uiClock.tick % 80 === 0) {
+    if (this.hud && !this.online && uiClock.tick % 80 === 0) {
       const [ch, who, female, text] = DEMO_CHAT[(uiClock.tick / 80) % DEMO_CHAT.length];
       const m = new ChatMsg(ch, ch === CHANNEL_SYSTEM ? -1 : 9, who, text, 0);
       if (female) m.flag |= 16;
@@ -354,6 +419,7 @@ export class MapScene implements Scene {
   }
 
   private leave(): void {
+    this.online?.session.net.close();
     WorldMap.clean();
     GameWorld.setMyPlayer(null);
     GameWorld.setNpcList([]);
