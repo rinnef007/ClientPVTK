@@ -43,6 +43,8 @@ export class Item {
   price = 0;
   /** Bound to the character (no "Khóa" option); server data. */
   binded = false;
+  /** Most per bag slot (Item.stackNum); 1 = does not stack. */
+  stackNum = 1;
 
   isEquited(): boolean {
     return this.slotPos >= 0 && this.slotPos < BAG_START;
@@ -103,11 +105,36 @@ export class Item {
   getItemSetID(): number {
     return this.itemSetID;
   }
+
+  /** Item.getPrice: the selling price (ShopItem overrides it with the buying price). */
+  getPrice(): number {
+    return this.price;
+  }
+
+  /** Item.getMoneyIconIndex: frame of the money icon set; items sell for "Bạc" (2). */
+  getMoneyIconIndex(): number {
+    return 2;
+  }
+
+  /** Item.getDesc: the shop / info box text (the attribute text, demo text here). */
+  getDesc(): string {
+    const info = this.getInfo();
+    return this.getPowerDesc() + (info ? `\n${info}` : '');
+  }
+}
+
+/** One of an item kind, as a plain Item (ShopItem.m325clone keeps only the Item part). */
+export function copyAsItem(src: Item): Item {
+  const it = Object.assign(new Item(), src);
+  it.slotPos = -1;
+  return it;
 }
 
 /** Equipment slots 0..17, then 30-slot bag pages from slot 30. */
 export const BAG_START = 30;
 export const BAG_PAGE_SIZE = 30;
+/** End of the bag: the equipment screen shows two pages ("Túi1", "Túi2"); the server sends the size. */
+export const BAG_END = BAG_START + 2 * BAG_PAGE_SIZE;
 
 export class PlayerBag {
   private readonly items = new Map<number, Item>();
@@ -174,6 +201,37 @@ export class PlayerBag {
    */
   getCanUseItemList(kind: number): Item[] {
     return this.bagItems().map(([, it]) => it).filter((it) => it.isCanUse(kind));
+  }
+
+  /**
+   * PlayerBag.addItem: `n` of `item`, topping up stacks of the same id first, then free slots.
+   * Returns false (adding nothing) when the bag cannot hold them all.
+   */
+  addItem(item: Item, n: number): boolean {
+    const stack = Math.max(1, item.stackNum);
+    const same = this.bagItems().filter(([, it]) => it.id === item.id && stack > 1);
+    let room = same.reduce((r, [, it]) => r + Math.max(0, stack - it.quantity), 0);
+    const free: number[] = [];
+    for (let s = BAG_START; s < BAG_END && room < n; s++) {
+      if (this.items.has(s)) continue;
+      free.push(s);
+      room += stack;
+    }
+    if (room < n) return false;
+    for (const [, it] of same) {
+      const add = Math.min(n, stack - it.quantity);
+      if (add <= 0) continue;
+      it.quantity += add;
+      n -= add;
+    }
+    for (const s of free) {
+      if (n <= 0) break;
+      const it = copyAsItem(item);
+      it.quantity = Math.min(n, stack);
+      n -= it.quantity;
+      this.setItem(s, it);
+    }
+    return true;
   }
 
   /** Takes `n` of item `id` out of the bag, emptying stacks in slot order. */

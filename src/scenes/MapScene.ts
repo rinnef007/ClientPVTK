@@ -1,7 +1,7 @@
 import { LEFT, TOP } from '../midp/anchor';
 import { FONT_MEDIUM, FONT_SMALL, type Graphics } from '../midp/Graphics';
 import { KEY_FIRE, KEY_NUM0, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
-import { NPC } from '../game/actor/NPC';
+import { NPC, NPC_TYPE_SHOP } from '../game/actor/NPC';
 import { Player } from '../game/actor/Player';
 import { Model, TYPE_PET } from '../game/actor/Model';
 import { Control } from '../game/main/Control';
@@ -26,7 +26,10 @@ import { setOnQuitGame } from '../game/ui/UIAction';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles, type HudPetInfo } from '../game/ui/WorldHud';
 import { MyPet } from '../game/actor/MyPet';
 import * as WorldMessage from '../game/main/WorldMessage';
-import { fillDemoPlayer, makeDemoNpcMissions } from '../game/demo/DemoData';
+import { DEMO_SHOP_ID, fillDemoPlayer, makeDemoNpcMissions, makeDemoShopGoods } from '../game/demo/DemoData';
+import { setDemoShop } from '../game/main/ShopServer';
+import { TYPE_SHOP_ITEM } from '../game/ui/screens/shop';
+import { TYPE_TWICE_SURE } from '../game/ui/screens/twiceSure';
 import { simRefreshNpcSigns } from '../game/main/MissionServer';
 import { TYPE_MISSION, doNpc, setOnMissionReward } from '../game/ui/screens/mission';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX } from '../game/actor/Player';
@@ -103,8 +106,8 @@ export class MapScene implements Scene {
   /** UIHandler.createUIFromXML(211) with everything it draws preloaded. */
   private async loadHud(): Promise<WorldHud | null> {
     const fs = getAssetFS();
-    // ui/46: the NPC mission dialog opens straight from the world (NPC.doNpc).
-    await preloadUI(UI_WORLD_PANEL, TYPE_ALERT, TYPE_MISSION);
+    // Opened straight from the world by NPC.doNpc: the NPC dialog (46), the shop (42), yes/no (14).
+    await preloadUI(UI_WORLD_PANEL, TYPE_ALERT, TYPE_MISSION, TYPE_SHOP_ITEM, TYPE_TWICE_SURE);
     await fs.preload([...HUD_EXTRA_SETS.flatMap(imageSetFiles), ...petIconFiles(DEMO_PET_HEAD), ...MAP_MODEL_IMAGES, ...WORLD_MAP_FILES]);
     await Promise.all([SPRITE_MAN_HEAD, SPRITE_MAN_HEAD + 1].map(preloadSprite));
     initUIEnvironment();
@@ -182,6 +185,10 @@ export class MapScene implements Scene {
     npcs[QUEST_NPC].talkDetail = 'Chào lữ khách! Ta có vài việc cần nhờ. (lời thoại giả)';
     npcs[0].missions = demo.elder;
     npcs[0].talkDetail = 'Ta là trưởng thôn (NPC giả).';
+    // NPC 3 keeps the made-up shop (ShopServer answers its goods, buying and selling).
+    Object.assign(npcs[2], { npcType: NPC_TYPE_SHOP, topic: 'Cửa hàng tạp hóa (demo)', shopID: [DEMO_SHOP_ID] });
+    npcs[2].talkDetail = 'Hàng tốt giá rẻ đây! (lời thoại giả)';
+    setDemoShop(DEMO_SHOP_ID, makeDemoShopGoods);
     await Promise.all(
       npcs.flatMap((n) => (n.getPlayerSprite()?.fragmentFiles ?? []).map((f) => f?.gameImage?.getImage()?.ready)),
     );

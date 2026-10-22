@@ -18,6 +18,8 @@ import * as GameWorld from '../../main/GameWorld';
 import * as WorldMessage from '../../main/WorldMessage';
 import { simAcceptMission, simDeleteMission, simRefreshNpcSigns, simSubmitMission } from '../../main/MissionServer';
 import { PowerString } from '../../string/PowerString';
+import { SURE_YES, waitForTwiceSureUI } from './twiceSure';
+import { doBrowseShop } from './shop';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { UIObject } from '../UIObject';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
@@ -27,7 +29,6 @@ export const TYPE_MISSION = 46;
 const TAB_MISSION = 12;
 const STR_NO_MISSION = 'Chưa có Nhiệm Vụ';
 const STR_MAIN_MISSION = 'Nhiệm vụ chính';
-const STR_BACK = 'Trở về'; // GameText 4
 const STR_ACCEPT = 'Nhận nhiệm vụ'; // GameText 27
 const STR_SUBMIT = 'Xong nhiệm vụ'; // GameText 28
 const STR_CANCEL = 'Hủy'; // GameText 29
@@ -46,14 +47,9 @@ const SUB_ACCEPT = 7;
 const SUB_DOING = 8;
 const SUB_VIEW = 9;
 const SUB_SUBMIT = 10;
-/**
- * Not in Java: UIHandler.waitForTwiceSureUI (a blocking yes/no box) is not ported, so giving up asks
- * with a ui/46 dialog of this sub type instead.
- */
-const SUB_SURE_GIVE_UP = 100;
-const EVENT_SURE = 1;
-/** handlerMissionNPCAction kinds: 1 choose a mission, 7 leave. */
+/** handlerMissionNPCAction kinds: 1 choose a mission, 4 open the shop, 7 leave. */
 const NPC_ACTION_MISSION = 1;
+const NPC_ACTION_SHOP = 4;
 const NPC_ACTION_LEAVE = 7;
 
 /** UIObject of a mission dialog: who is looking, at which mission, with which NPC. */
@@ -65,6 +61,8 @@ interface MissionUIObj {
 /** A button: its text, and for NPC lists the mission status shown as an icon (set 3). */
 type MissionLabel = [string] | [string, number];
 type NpcAction = [number, Mission?];
+/** doSpecialNpc's npcType → handlerMissionNPCAction kind (3 jump, 4 shop, 5 teacher, 6 …). */
+const SPECIAL_NPC_ACTION: Record<number, number> = { 3: 3, 8: 3, 7: 5, 2: NPC_ACTION_SHOP, 9: 6 };
 
 const curMapId = () => GameWorld.gameMap?.getMapID() ?? 0;
 
@@ -351,11 +349,6 @@ function processMissionLayer(ui: UIHandler, action: number): void {
     return;
   }
   if (typeof ev !== 'number' || o == null) return;
-  if (ui.getSubType() === SUB_SURE_GIVE_UP) {
-    ui.close();
-    if (ev === EVENT_SURE) giveUp(ui.parent, o);
-    return;
-  }
   if (doMenuButton(ui, o, ev)) ui.close();
 }
 
@@ -373,9 +366,12 @@ function doMenuButton(ui: UIHandler, o: MissionUIObj, ev: number): boolean {
     return false;
   }
   if (ev === EVENT_GIVE_UP) {
-    const sure = `Mi đồng ý hủy nhiệm vụ ${PowerString.makeColorString(m.name, 16711680)} không?`;
-    createMissionUI(STR_CANCEL, sure, [[STR_CANCEL], [STR_BACK]], [EVENT_SURE, -1], SUB_SURE_GIVE_UP, o, ui.parent);
-    return true;
+    // waitForTwiceSureUI blocks in Java; here the box answers through a callback and the details
+    // dialog stays open until then (it closes once the mission is given up).
+    waitForTwiceSureUI(STR_CANCEL, `Mi đồng ý hủy nhiệm vụ </cff0000${m.name}/p> không?`, (r) => {
+      if (r === SURE_YES && giveUp(ui.parent, o)) ui.close();
+    }, 6);
+    return false;
   }
   let ok = false;
   if (ev === EVENT_ACCEPT) ok = doAcceptMissionMsg(p, npc, m);
@@ -385,10 +381,11 @@ function doMenuButton(ui: UIHandler, o: MissionUIObj, ev: number): boolean {
 }
 
 /** doDeleteMissionMsg after "Hủy" is confirmed; the mission list below refreshes. */
-function giveUp(parent: UIHandler | null, o: MissionUIObj): void {
-  if (o.player == null || o.mission == null || !simDeleteMission(o.player, o.mission)) return;
+function giveUp(parent: UIHandler | null, o: MissionUIObj): boolean {
+  if (o.player == null || o.mission == null || !simDeleteMission(o.player, o.mission)) return false;
   checkNPCMissions(o.player);
   parent?.notifyLayerAction(110);
+  return true;
 }
 
 /** processMissionNPCStatus stand-in after every change. */
@@ -437,16 +434,25 @@ export function setOnMissionReward(fn: (p: Player) => void): void {
 // --- talking to a quest NPC ---
 
 /**
- * NPC.doNpc: an NPC taking back a finished mission, or having missions or a greeting, opens the
- * mission list. Not ported: the mission data request (doGetMissionData), city buildings and
- * special NPCs (doSpecialNpc: shops, teachers, battles, jumps).
+ * NPC.doNpc: an NPC taking back a finished mission opens the mission list; otherwise a special NPC
+ * (doSpecialNpc) offers its service; otherwise an NPC with missions or a greeting opens the mission
+ * list. Not ported: the mission data request (doGetMissionData) and city buildings.
  */
 export function doNpc(npc: NPC): boolean {
   const p = GameWorld.myPlayer;
   if (!npc.isEnable() || p == null) return false;
   p.setAnimationByDir(false);
-  if (!Mission.isHaveSubmitMission(p, npc, curMapId()) && npc.talkDetail == null && npc.missions.length === 0) return true;
-  doMissionNpc(p, npc);
+  if (Mission.isHaveSubmitMission(p, npc, curMapId())) doMissionNpc(p, npc);
+  else if (doSpecialNpc(p, npc)) return true;
+  else if (npc.talkDetail != null || npc.missions.length > 0) doMissionNpc(p, npc);
+  return true;
+}
+
+/** NPC.doSpecialNpc: the NPC's topic and "Rời đi" (the "(Bản cũ)" entry of type 9 is not ported). */
+function doSpecialNpc(p: Player, npc: NPC): boolean {
+  const kind = SPECIAL_NPC_ACTION[npc.npcType];
+  if (kind == null) return false;
+  createMissionUI(npc.name, npc.talkDetail ?? '', [[npc.topic], [STR_LEAVE]], [[kind], [NPC_ACTION_LEAVE]], SUB_NPC, { player: p, mission: null, npc }, null);
   return true;
 }
 
@@ -480,10 +486,15 @@ function doMissionNpc(p: Player, npc: NPC): void {
   createMissionUI(npc.name, npc.talkDetail ?? '', labels, actions, SUB_NPC, { player: p, mission: null, npc }, null);
 }
 
-/** NPC.handlerMissionNPCAction: 1 opens the mission; 7 ("Rời đi") closes everything. */
+/**
+ * NPC.handlerMissionNPCAction: 1 opens the mission, 4 the NPC's shop, 7 ("Rời đi") closes
+ * everything; jumps, battles and teachers need the server.
+ */
 function handlerMissionNPCAction(npc: NPC, a: NpcAction): void {
   if (a[0] === NPC_ACTION_MISSION && a[1]) handleChoiceMissionAction(a[1], npc);
+  else if (a[0] === NPC_ACTION_SHOP) doBrowseShop(npc.shopID[0] ?? 0);
   else if (a[0] === NPC_ACTION_LEAVE) UIHandler.closeAllUI();
+  else alertMessage(STR_NEED_SERVER);
 }
 
 /** NPC.handleChoiceMissionAction: hand in / in progress / accept, or why it cannot be accepted. */

@@ -8,5 +8,7 @@ import './chat';
 import './systemSet';
 import './pet';
 import './mission';
+import './twiceSure';
+import './shop';
 import './setting';
 import '../../main/WorldMap';

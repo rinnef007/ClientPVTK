@@ -10,6 +10,8 @@ import type { Mission } from '../core/Mission';
 import { Model, TYPE_NPC } from './Model';
 
 export const NPC_TYPE_MONSTER = 1;
+/** npcType 2: a shop keeper (NPC.doSpecialNpc offers its topic, which opens shopID[0]). */
+export const NPC_TYPE_SHOP = 2;
 export const NPC_TYPE_JUMP = 8;
 
 export class NPC extends Model {
@@ -23,6 +25,10 @@ export class NPC extends Model {
   missions: Mission[] = [];
   /** Greeting shown above the mission list (NPC.talkDetail). */
   talkDetail: string | null = null;
+  /** The special NPC's menu entry (NPC.topic), e.g. the shop's name. */
+  topic = '';
+  /** Shops this NPC opens (NPC.shopID). */
+  shopID: number[] = [];
   status = 0;
   rangeX = 0;
   rangeY = 0;

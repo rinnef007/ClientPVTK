@@ -3,6 +3,7 @@
 // sheet /common/1 without knowing which frame is which item type.
 import { BAG_START, ITEM_TYPE_PET, Item, PlayerBag, SLOT_PET } from '../actor/Item';
 import { Talent } from '../core/Talent';
+import { ShopItem } from '../core/ShopItem';
 import { SKILL_TYPE_ACTIVE, SKILL_TYPE_AUTO, SKILL_TYPE_PASSIVE, Skill } from '../core/Skill';
 import { CONDITION_DEMO_MISSION_FINISHED, CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../actor/MyPet';
@@ -31,13 +32,14 @@ export function makeDemoBag(): PlayerBag {
     [6, item('Nhẫn demo', 20, 4, 1, '', 7)],
   ];
   for (const [slot, it] of equip) bag.setItem(slot, it);
+  // Ids, stack sizes and selling prices are made up (the shop sells the same ids, so they stack).
   const bagItems = [
-    item('Bình máu demo', 30, 0, 25, 'Hồi 500 HP (dữ liệu giả).', 27),
-    item('Bình mana demo', 31, 0, 12, 'Hồi 300 MP (dữ liệu giả).', 27),
-    Object.assign(item('Đá cường hóa demo', 40, 2, 5), { id: DEMO_STONE_ID }),
-    item('Bảo thạch demo', 45, 3, 2),
-    item('Cuộn dịch chuyển demo', 50, 1, 3, 'Về thành (dữ liệu giả).', 31),
-    item('Vũ khí túi demo', 14, 5, 1, '', 9),
+    Object.assign(item('Bình máu demo', 30, 0, 25, 'Hồi 500 HP (dữ liệu giả).', 27), { id: DEMO_HP_ID, stackNum: 99, price: 2 }),
+    Object.assign(item('Bình mana demo', 31, 0, 12, 'Hồi 300 MP (dữ liệu giả).', 27), { id: DEMO_MP_ID, stackNum: 99, price: 3 }),
+    Object.assign(item('Đá cường hóa demo', 40, 2, 5), { id: DEMO_STONE_ID, stackNum: 99, price: 5 }),
+    Object.assign(item('Bảo thạch demo', 45, 3, 2), { id: 9103, stackNum: 99, price: 20 }),
+    Object.assign(item('Cuộn dịch chuyển demo', 50, 1, 3, 'Về thành (dữ liệu giả).', 31), { id: 9104, stackNum: 20, price: 4 }),
+    Object.assign(item('Vũ khí túi demo', 14, 5, 1, '', 9), { id: 9105, price: 150 }),
   ];
   bagItems.forEach((it, i) => bag.setItem(BAG_START + i, it));
   // Pet items (type 32): the active pet sits in equipment slot 1, two more wait in the bag.
@@ -56,6 +58,33 @@ function petItem(name: string, level: number, icon: bigint, grade: number): Item
 }
 
 const DEMO_STONE_ID = 9002;
+const DEMO_HP_ID = 9101;
+const DEMO_MP_ID = 9102;
+
+/** The demo shop's id (NPC demo 3 opens it). */
+export const DEMO_SHOP_ID = 1;
+
+function goods(name: string, bagIcon: number, grade: number, fields: Partial<ShopItem>, description = ''): ShopItem {
+  const it = Object.assign(new ShopItem(), { name, bagIcon, grade, quantity: 1 }, fields);
+  it.description = description || `${name}\n(Hàng giả – hàng thật do server gửi.)`;
+  return it;
+}
+
+/** Made-up goods: names, prices, limits and stock are invented. */
+export function makeDemoShopGoods(): ShopItem[] {
+  return [
+    goods('Bình máu demo', 30, 0, { id: DEMO_HP_ID, type: 27, stackNum: 99, money3: 10, price: 2 }, 'Hồi 500 HP (dữ liệu giả).'),
+    goods('Bình mana demo', 31, 0, { id: DEMO_MP_ID, type: 27, stackNum: 99, money3: 12, price: 3 }, 'Hồi 300 MP (dữ liệu giả).'),
+    goods('Đá cường hóa demo', 40, 2, { id: DEMO_STONE_ID, stackNum: 99, money2: 5, maxBuy: 20, price: 5 }),
+    goods('Cuộn dịch chuyển demo', 50, 1, { id: 9104, type: 31, stackNum: 20, money3: 25, price: 4 }, 'Về thành (dữ liệu giả).'),
+    goods('Mũ sắt demo', 10, 1, { id: 9201, type: 8, money3: 300, hotTypeOrNewItem: 1, price: 60 }),
+    goods('Áo giáp demo', 12, 2, { id: 9202, type: 12, money3: 800, allCount: 3, price: 160 }),
+    goods('Cánh demo', 22, 4, { id: 9203, type: 9, money1: 50, hotTypeOrNewItem: 2, price: 0 }),
+    goods('Nhẫn bạc demo', 20, 1, { id: 9204, type: 7, money3: 450, price: 90 }),
+    goods('Giày da demo', 16, 1, { id: 9205, type: 5, money3: 250, price: 50 }),
+    goods('Bảo thạch demo', 45, 3, { id: 9103, stackNum: 99, money2: 30, price: 20 }),
+  ];
+}
 
 /** Made-up missions for the mission list: one in progress, two whose goals are met. */
 export function makeDemoMissions(): Mission[] {
