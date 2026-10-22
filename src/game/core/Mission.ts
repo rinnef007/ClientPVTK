@@ -70,6 +70,13 @@ export class Condition {
     return new Condition(type, '', 0);
   }
 
+  /** Condition.updateKilledMonsterNum: kills of this condition's monster (at most 127), with a line for the reward text. */
+  updateKilledMonsterNum(monsterId: number, n: number, out: string[] | null): void {
+    if (this.type !== CONDITION_KILL_MONSTER || this.itemId !== monsterId) return;
+    this.done = Math.min(127, this.done + n);
+    out?.push(`${PowerString.makeColorString('Nhiệm vụ: ', 16776960)}${this.name} ${PowerString.makeColorString(String(this.done), this.done >= this.need ? 65280 : 16711680)}/${this.need}\n`);
+  }
+
   private progress(p: Player | null): number {
     if (this.type === CONDITION_HAVE_ITEM) return p?.bag?.getItemNumByIdInBag(this.itemId) ?? 0;
     return this.done;
@@ -121,6 +128,11 @@ export class Mission {
   money3 = 0;
   honor = 0;
   submitCondition: Condition[] | null = null;
+
+  /** Mission.updateKillMission. */
+  updateKillMission(monsterId: number, n: number, out: string[] | null): void {
+    for (const c of this.submitCondition ?? []) c?.updateKilledMonsterNum(monsterId, n, out);
+  }
   acceptCondition: Condition[] | null = null;
   /** Offered right after this one is handed in (doSubmitEndCheck). */
   submitNextMissionID = 0;

@@ -95,9 +95,41 @@ export function logicOtherModels(): void {
 }
 
 /** Ticks NPCs. Java returns true when a monster NPC starts a battle (battles not ported). */
+/** GameWorld.toBattle hook: starts the battle of a monster group (the scene installs it). */
+let battleStarter: ((groupId: number) => boolean) | null = null;
+export function setBattleStarter(fn: ((groupId: number) => boolean) | null): void {
+  battleStarter = fn;
+}
+/** GameWorld.nextBattleTime: no new encounter before this time (ms). */
+export let nextBattleTime = 0;
+export function setNextBattleTime(t: number): void {
+  nextBattleTime = t;
+}
+
+/** GameWorld.toBattle(id, true): at most one encounter every 5 s. */
+export function toBattle(groupId: number, byTouch: boolean): boolean {
+  if (byTouch && Date.now() < nextBattleTime) return false;
+  if (battleStarter == null || !battleStarter(groupId)) return false;
+  nextBattleTime = Date.now() + 5000;
+  return true;
+}
+
+/**
+ * GameWorld.logicNPCs: NPCs move; walking within 24 px of a battle NPC (type 1) starts its battle
+ * and hides it for a while. (Team members, stalls and escorts do not fight here: not ported.)
+ */
 export function logicNPCs(): boolean {
   if (myPlayer == null) return false;
-  for (const n of npcList) n.logic();
+  for (const n of npcList) {
+    n.logic();
+    if (!n.isVisible() || !n.isEnable() || n.npcType !== 1) continue;
+    const id = n.battleID[0] ?? 0;
+    const d = Math.abs(myPlayer.getPx() - n.getPx()) + Math.abs(myPlayer.getPy() - n.getPy());
+    if (id > 0 && !myPlayer.isMember() && !myPlayer.isShopMode() && d <= 24 && toBattle(id, true)) {
+      n.hide(true);
+      return true;
+    }
+  }
   return false;
 }
 

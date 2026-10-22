@@ -31,6 +31,10 @@ export class NPC extends Model {
   topic = '';
   /** Shops this NPC opens (NPC.shopID). */
   shopID: number[] = [];
+  /** A battle NPC's monster groups (NPC.battleID) and seconds before it comes back after a fight. */
+  battleID: number[] = [];
+  comeOutTime = 0;
+  private comeOutCounter = 0;
   status = 0;
   rangeX = 0;
   rangeY = 0;
@@ -81,7 +85,22 @@ export class NPC extends Model {
     this.rangeY = rangeY;
   }
 
+  /** NPC.hide: gone for comeOutTime seconds (`afterBattle`) or 150 ticks. */
+  hide(afterBattle: boolean): void {
+    if (!this.isVisible()) return;
+    this.setVisible(false);
+    this.setEnable(false);
+    this.comeOutCounter = afterBattle ? this.comeOutTime * 10 : 150;
+  }
+
   logic(): void {
+    if (this.comeOutCounter > 0) {
+      if (--this.comeOutCounter <= 0) {
+        this.setVisible(true);
+        this.setEnable(true);
+      }
+      return;
+    }
     super.logic();
     if (this.controlList.length === 0 && Date.now() > this.nextMoveTime && this.isNPCInScreen()) this.createMoveControl();
   }

@@ -135,6 +135,11 @@ export class WorldHud {
     return hud;
   }
 
+  /** Another UI with the same info widgets (the battle order bar, ui/100). */
+  static wrap(ui: UIHandler): WorldHud {
+    return new WorldHud(ui);
+  }
+
   get(ev: number): GWidget | null {
     return this.ui.getGWidgetByEventType(ev);
   }
@@ -143,8 +148,8 @@ export class WorldHud {
     for (const ev of WORLD_FLAG_ICONS) this.get(ev)?.setShow(false);
   }
 
-  /** updateWorldPlayerInfoUI(ui, 0, true). */
-  updateWorldPlayerInfoUI(p: HudPlayerInfo): void {
+  /** updateWorldPlayerInfoUI(ui, 0, true); `full` false (kind 2) only updates the bars. */
+  updateWorldPlayerInfoUI(p: HudPlayerInfo, full = true): void {
     const combat = this.get(EVENT_COMBAT_POINT);
     if (combat instanceof GImageNumer) {
       combat.setOffsetXY(3, 2);
@@ -152,7 +157,7 @@ export class WorldHud {
       combat.setData(238, 0, 0);
     }
     const head = this.get(EVENT_ALL_INFO_PLAYER_ICON);
-    if (head instanceof GGameIcon) {
+    if (full && head instanceof GGameIcon) {
       p.headSprite?.setRotate(true);
       head.setSprite(p.headSprite);
     }

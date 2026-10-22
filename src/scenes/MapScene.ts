@@ -41,6 +41,11 @@ import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX } fr
 import { msgEnv } from '../game/core/PowerMsg';
 import { CHANNEL_AREA, CHANNEL_SYSTEM, CHANNEL_TEAM, CHANNEL_WORLD, ChatMsg, addChatMsg, clearChatHistory } from '../game/main/ChatMsg';
 import { currentAppearance } from './DressingRoomScene';
+import { BattleScene } from './BattleScene';
+import { Battle } from '../game/battle/Battle';
+import { MonsterGroup } from '../game/core/MonsterGroup';
+import { Image } from '../game/image/Image';
+import { createEnterLocalBattleMsg, type LocalBattleReward } from '../net/online/BattleMessages';
 import { MenuScene } from './MenuScene';
 import { COLOR_TEXT, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
 import { SOFTKEY_H, initUIEnvironment, softKeyAt } from './ui';
@@ -194,9 +199,49 @@ export class MapScene implements Scene {
     }
     GameWorld.setMotion(isMotion);
     setOnQuitGame(() => this.leave());
+    GameWorld.setBattleStarter((id) => this.startBattle(id, online, me));
     this.hud = hud;
     this.others = [];
     this.map = map;
+  }
+
+  /**
+   * GameWorld.toBattle for a local battle: MonsterGroup.getLocalBattlePlayerList, the move sync
+   * and 12501, then the battle screen over the darkened map (stage 30).
+   */
+  private startBattle(groupId: number, online: OnlineWorld, me: Player): boolean {
+    const map = this.map;
+    const group = online.groups.find((g) => g.groupId === groupId) ?? null;
+    if (map == null || group == null) {
+      WorldMessage.addSystemChat(`Không tìm thấy nhóm quái vật bản địa ${groupId}`);
+      return false;
+    }
+    const list = MonsterGroup.getLocalBattlePlayerList(me, group, (id) => online.monsters.find((m) => m.id === id) ?? null);
+    if (list == null) return false;
+    onlineState.moveSync?.syncMoveTo(me.getGx(), me.getGy());
+    online.session.net.send(createEnterLocalBattleMsg());
+    const battle = Battle.createLocalBattle(Math.floor(Math.random() * 0x7fff), list, group);
+    // GameMap.initBattleBuffer: the map as it is now (the battle screen darkens it).
+    const bg = Image.createImage(SCREEN_WIDTH, SCREEN_HEIGHT);
+    map.draw(bg.getGraphics(), false);
+    UIHandler.closeAllUI();
+    WorldPanel.clearMyMove();
+    const d = online.enter.player;
+    const icons: [bigint, bigint, bigint] = d ? [d.icon1, d.icon2, d.icon3] : [0n, 0n, 0n];
+    this.ctx.go(new BattleScene({ battle, me, icons, session: online.session, background: bg, onEnd: (r) => this.endBattle(me, r) }));
+    return true;
+  }
+
+  /** Back from a battle (stage 20): the HUD, then the reward text and NPC signs when they arrive. */
+  private endBattle(me: Player, reward: Promise<LocalBattleReward | null>): void {
+    this.ctx.go(this);
+    this.refreshHud(me);
+    void reward.then((r) => {
+      if (r == null) return;
+      for (const [id, sign] of r.npcSigns) GameWorld.getNpcByID(id)?.setSign(sign);
+      if (r.text.trim()) WorldMessage.addPointMsg(r.text);
+      this.refreshHud(me);
+    }, (e) => WorldMessage.addSystemChat(`Lỗi phần thưởng: ${e instanceof Error ? e.message : e}`));
   }
 
   /** HUD, mini map and the world message areas (shared by both modes). */
@@ -428,6 +473,7 @@ export class MapScene implements Scene {
   }
 
   private leave(): void {
+    GameWorld.setBattleStarter(null);
     this.online?.session.net.close();
     onlineState.session = null;
     onlineState.moveSync = null;

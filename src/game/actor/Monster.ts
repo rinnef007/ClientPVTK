@@ -179,9 +179,10 @@ export class Monster extends Player {
   }
 
   /** Monster.checkBattleMsg: the AI line becomes the battle message. */
-  checkBattleMsg(): void {
+  checkMonsterBattleMsg(): void {
     if (this.monsterAI != null && this.message && this.message !== '0') {
       this.battleMessage = this.message;
+      this.battleMessageCount = 20;
       this.message = null;
     }
   }

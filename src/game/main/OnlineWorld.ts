@@ -88,6 +88,8 @@ export async function buildOnlineNpcs(list: NpcData[]): Promise<NPC[]> {
     n.talkDetail = d.talkDetail || null;
     n.topic = d.topic;
     n.shopID = d.shopID;
+    n.battleID = d.battleID;
+    n.comeOutTime = d.comeOutTime;
     n.setSource(d.gx, d.gy, d.rangeX, d.rangeY);
     n.setVisible((d.status & 1) !== 0);
     n.setEnable((d.status & 2) !== 0);

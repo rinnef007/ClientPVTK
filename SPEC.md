@@ -148,7 +148,7 @@ public/assets/       – (gitignored) ảnh nạp bằng import-assets
 | P2 – Luồng đăng nhập offline | Port `ServerInfo`, màn chọn server/nhân vật (`CG_LOGIN_*`), mock trả danh sách nhân vật giả | Tạo/chọn nhân vật giả và vào được "world" trống | ⏳ |
 | **P3 – Sprite & bản đồ** | Port `.pd/.pn`, `.pl`, `.fr`, `.spr`, `sprite/*`, `map/*` | Xem được animation nhân vật đúng màu; vẽ được 1 bản đồ dựng tay + nhân vật đi lại | ✅ (xem §9) |
 | P4 – UI hệ thống | Port `.ui`, font `.t`, `gui/*`, `ui/UIObject`, một phần `UIHandler` (túi đồ, chat, nhiệm vụ) | Mở được túi đồ, chat với dữ liệu mock | 🔄 đang làm (xem §12) |
-| P5 – Chiến đấu | `battle/*` theo lượt | Chơi một trận với quái mock | ⏳ |
+| P5 – Chiến đấu | `battle/*` theo lượt | Chơi một trận với quái mock | 🔄 trận đánh bản địa với BE chạy được (xem §11.3 online) |
 | P6 – Hoàn thiện | Âm thanh, lưu cài đặt (`localStorage` thay RMS), mobile touch, PWA | Lighthouse PWA, chơi được trên điện thoại | ⏳ |
 
 Ước lượng thô (*chỉ là ước đoán*): khoảng 30.000 dòng Java cần port. Giai đoạn 3–5 là phần nặng nhất,
@@ -258,7 +258,7 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
 ### 11.2 Chưa port / thay thế
 - `NPC.doNpc` port phần nhiệm vụ và NPC bán hàng (xem §12); NPC đặc biệt khác (dạy kỹ năng, vào trận,
   dịch chuyển) báo cần server; việc tải dữ liệu nhiệm vụ của NPC (`doGetMissionData`) chưa port.
-- Trận đánh khi chạm quái (`logicNPCs` → `toBattle`), đi theo đội, pet và lính đánh thuê đi theo,
+- Đi theo đội, pet và lính đánh thuê đi theo,
   tự động tìm đường tới nhiệm vụ (`autoMoveControlList`), chế độ hộ tống.
 - Chạm vào NPC: Java dùng `getPointCheckNPC` với vùng chạm theo pixel; web dùng ô lưới.
 - Các lệnh `MoveTo` của "người chơi khác" trên bản đồ thử do `MapScene` giả lập server phát ra.
@@ -334,9 +334,10 @@ Thứ tự trong một tick giống `GameCanvas`: `logicOtherModels` → `myPlay
   Đã nối với BE ở chế độ online (gói theo client 1.2.0, `net/online/`):
   - **Di chuyển** (`MoveSync.ts`, `MsgHandler.doSoftSync` / `syncMoveTo`): mỗi 5 giây gửi 10504 (gx, gy) nếu ô đã đổi; trước khi hỏi nhiệm vụ của NPC cũng gửi ngay.
   - **Nhiệm vụ** (`MissionMessages.ts`, `Mission.fromBytes` / `Condition.fromBytes` 1.2.0): nói chuyện với NPC loại 0/5 gửi 14501 (`NPC.doGetMissionData`, một lần trừ khi NPC có bit 16), nhiệm vụ đang làm lấy từ gói vào game; nhận 14502, trả 14503 (đọc `processMissionReward`: tiền, lên cấp, vật phẩm thêm/bớt, cống hiến), bỏ 14504; dấu NPC theo `processMissionNPCStatus` của từng trả lời. Điều kiện loại 12 (ở bản đồ) đã thêm. Đã thử với BE: nhận, bỏ, trả "Dẹp Loạn Mèo Hoang" (lên cấp, +3 Bình Máu Nhỏ).
+  - **Trận đánh bản địa** (`game/battle/`, `scenes/BattleScene.ts`, `BattleMessages.ts`): 10503 xin thêm khối 2048 (nhóm quái, `MonsterGroup.fromBytes`) và 4096 (quái + AI, `Monster.fromBytes`, `MonsterAI.fromBytes`). Đi tới trong 24 px của NPC loại 1 (`GameWorld.logicNPCs` → `toBattle`, cách nhau 5 giây, NPC ẩn `comeOutTime` giây) gửi 12501 rồi mở trận. Luật trận port từ `Battle`: 34 vị trí, lượt theo tốc độ, `java.util.Random` có seed (`common/JavaRandom.ts`), công thức `calc` (trúng, sát thương, chí mạng, đỡ, phản đòn, hút máu, thấu rõ, khiên ma lực), buffer/trạng thái (`core/Buffer.ts`, `battle/BattlePower.ts` = `Define.processBattlePower`), AI quái, kỹ năng chủ động, dùng thuốc, bỏ chạy, tự đánh (Auto), bảo vệ của pet. Thuộc tính trận lấy từ công thức `Player.get` (trang bị, kỹ năng bị động, bộ đồ, danh hiệu). Màn hình trận port `BattleAniEngine`, `AnimationControl` (chạy tới, đòn đánh, hiệu ứng, số bay, "Né", chết), `BattlePanel` (thanh lệnh ui/100, danh sách kỹ năng/vật phẩm ui/15, con trỏ mục tiêu) trên nền bản đồ làm tối. Kết thúc gửi 12502 (HP/MP đầu-cuối, seed, nhóm, các lệnh) và đọc thưởng (`parseBattleNormalReward`: tiền, lên cấp, tiến độ diệt quái của nhiệm vụ, vật phẩm, dấu NPC). Đã thử trên trình duyệt với BE Python: đánh thắng Mèo Hoang (EXP, Đồng về đúng), dùng Bình Máu Nhỏ, bỏ chạy. Chưa port: trận từ xa/PK/đấu trường/xem trận, lính đánh thuê, NPC đồng minh trong nhóm quái chưa thử, phần thưởng pet và hộ tống (gặp thì báo lỗi), chat trong trận, hướng dẫn tân thủ. Lưu ý BE: BE coi `endHP > 0` là thắng nên bỏ chạy vẫn nhận thưởng.
   - **Shop** (`ShopMessages.ts`): 12004 danh sách (`ShopItem.fromBytesShopItem`), 12005 mua (`doItemShopBuyMsg`: thêm vào túi, `Model.setPlayerMoney`), 12006 bán (tổng Bạc mới). Shop quốc gia (22000–23999) và đổi vật phẩm (30000–30199) chưa hỗ trợ.
 
-  Chưa làm ở chế độ online: người chơi khác và các gói server tự đẩy (đang bỏ qua, kể cả 11004 hồi máu), trận đánh (nên tiến độ diệt quái chưa tăng), HP/MP tối đa (Java tính từ thuộc tính và trang bị; tạm lấy giá trị hiện tại), pet, đổi bản đồ, chọn/tạo nhân vật bằng giao diện gốc, chọn phần thưởng nhiệm vụ, dò đường.
+  Chưa làm ở chế độ online: người chơi khác và các gói server tự đẩy (đang bỏ qua, kể cả 11004 hồi máu), pet trong trận (chưa dựng pet online), đổi bản đồ, chọn/tạo nhân vật bằng giao diện gốc, chọn phần thưởng nhiệm vụ, dò đường.
 
   Dữ liệu người chơi, pet, nhiệm vụ, kỹ năng, túi đồ, vật phẩm và người chơi khác đều là **dữ liệu giả** (`game/demo/DemoData.ts`); icon vật phẩm chọn tuỳ ý từ `common/1`, không khớp loại vật phẩm thật. `getClone` dựng lại widget từ dữ liệu `.ui` (Java chép trạng thái lúc chạy; các màn chỉ nhân bản mẫu chưa bị đổi nên kết quả như nhau).
 - Font hệ thống: dùng Roboto/Arial để gần với Android, nhưng độ rộng chữ vẫn có thể lệch vài pixel.

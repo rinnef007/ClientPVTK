@@ -2,7 +2,9 @@
 import type { Mission } from '../core/Mission';
 import type { Talent } from '../core/Talent';
 import type { PlayerBag } from './Item';
+import type { AnimationControl } from '../battle/AnimationControl';
 import type { Buffer } from '../core/Buffer';
+import type { GameSprite } from '../sprite/GameSprite';
 import { getBufferBitValue, getBufferType } from '../core/DefineBattle';
 import { Skill } from '../core/Skill';
 import type { Control } from '../main/Control';
@@ -129,6 +131,13 @@ export class Player extends Model {
       }
     }
     return false;
+  }
+
+  /** Player.updateAllKillMission: monster kills of a battle count for the missions in progress. */
+  updateAllKillMission(ids: number[], counts: number[], out: string[] | null): void {
+    ids.forEach((id, i) => {
+      for (const m of this.missionList) m?.updateKillMission(id, counts[i], out);
+    });
   }
 
   deleteMission(m: Mission): void {
@@ -470,6 +479,21 @@ export class Player extends Model {
   newReflection = 0;
   /** A monster's attack dialogue shown over it (Player.dialogAIFrame text). */
   battleMessage: string | null = null;
+  /** Ticks left to show battleMessage (MessageFrame.setDrawCount). */
+  battleMessageCount = 0;
+  /** Battle view: the fighter's sprite, its death mark, effect sprites and queued animations. */
+  battleSprite: GameSprite | null = null;
+  dieSprite: GameSprite | null = null;
+  battleEffectSpriteList: GameSprite[] = [];
+  battlePlanControlList: AnimationControl[] = [];
+
+  /** Player.checkBattleMsg: a player's or pet's skill name said over it. */
+  checkBattleMsg(text: string | null): void {
+    if (text != null && text.trim().length > 0) {
+      this.battleMessage = text;
+      this.battleMessageCount = 20;
+    }
+  }
 
   /** Player.getAutoSkillCount: the filled auto-battle slots. */
   getAutoSkillCount(): number {

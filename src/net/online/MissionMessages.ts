@@ -72,7 +72,7 @@ export function readNpcStatus(m: Message): [number, number][] {
 }
 
 /** MsgHandler.processUpLevelMsg (1.2.0): the first level, then the god level (read and dropped). */
-function readUpLevel(m: Message, p: Player): string {
+export function readUpLevel(m: Message, p: Player): string {
   const exp = m.getInt();
   const levels = m.getByte();
   let newExp = 0;
@@ -95,7 +95,7 @@ function readUpLevel(m: Message, p: Player): string {
 }
 
 /** processAddItemMsg: new items (kind 1) or more of a bag slot (kind 2), and the text listing them. */
-function readAddItems(m: Message, bag: PlayerBag): string {
+export function readAddItems(m: Message, bag: PlayerBag): string {
   let s = '';
   for (let n = m.getByte(); n > 0; n--) {
     const kind = m.getByte();
