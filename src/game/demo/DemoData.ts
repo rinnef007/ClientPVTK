@@ -5,7 +5,7 @@ import { BAG_START, ITEM_TYPE_PET, Item, PlayerBag, SLOT_PET } from '../actor/It
 import { Talent } from '../core/Talent';
 import { ShopItem } from '../core/ShopItem';
 import { SKILL_TYPE_ACTIVE, SKILL_TYPE_AUTO, SKILL_TYPE_PASSIVE, Skill } from '../core/Skill';
-import { CONDITION_DEMO_MISSION_FINISHED, CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
+import { CONDITION_MISSION_FINISHED, CONDITION_HAVE_ITEM, CONDITION_KILL_MONSTER, Condition, Mission } from '../core/Mission';
 import { ATTR_PET_GRADE, ATTR_PET_GROW_LEVEL, MyPet } from '../actor/MyPet';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, ATTR_MP_MAX, type Player } from '../actor/Player';
 
@@ -145,7 +145,7 @@ export function makeDemoNpcMissions(mapId: number): { quest: Mission[]; elder: M
     dialogStartFinish: 'Tốt lắm, cảm ơn ngươi. (lời thoại giả)',
     mapId, npcId: DEMO_QUEST_NPC_ID, level: 1, exp: 900, money2: 10,
   });
-  report.acceptCondition = [new Condition(CONDITION_DEMO_MISSION_FINISHED, '', 1, 0, letter.getId())];
+  report.acceptCondition = [new Condition(CONDITION_MISSION_FINISHED, '', 1, 0, letter.getId())];
   const hard = new Mission(9005);
   Object.assign(hard, {
     name: 'Thử thách cấp cao (demo)',

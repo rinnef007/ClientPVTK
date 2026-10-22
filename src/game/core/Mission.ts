@@ -11,11 +11,8 @@ import { isNullText } from '../common/Tool';
 
 export const CONDITION_KILL_MONSTER = 2;
 export const CONDITION_HAVE_ITEM = 7;
-/**
- * Not a game condition type: the offline demo's "mission `itemId` finished" check, standing in for
- * the server only offering a chained mission after the previous one (the real type is unknown).
- */
-export const CONDITION_DEMO_MISSION_FINISHED = -1;
+/** "Mission `itemId` finished" (Condition.isConditionOfSatisfy case 9 → Mission.isMissionFinish). */
+export const CONDITION_MISSION_FINISHED = 9;
 
 /** Mission.setting bit for random ("challenge") missions. */
 export const MISSION_IS_RANDOM = 2097152;
@@ -49,7 +46,7 @@ export class Condition {
   isConditionOfSatisfy(p: Player | null): boolean {
     if (p == null) return false;
     if (this.type === CONDITION_KILL_MONSTER || this.type === CONDITION_HAVE_ITEM) return this.progress(p) >= this.need;
-    if (this.type === CONDITION_DEMO_MISSION_FINISHED) return Mission.isMissionFinish(p, this.itemId);
+    if (this.type === CONDITION_MISSION_FINISHED) return Mission.isMissionFinish(p, this.itemId);
     return true;
   }
 }
