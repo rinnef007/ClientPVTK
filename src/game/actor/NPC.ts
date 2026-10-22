@@ -23,6 +23,8 @@ export class NPC extends Model {
   icon2 = 0;
   /** Missions this NPC offers (NPC.missions, loaded from the server by doGetMissionData). */
   missions: Mission[] = [];
+  /** NPC tab status 4: its missions were fetched from the server (doGetMissionData). */
+  missionsLoaded = false;
   /** Greeting shown above the mission list (NPC.talkDetail). */
   talkDetail: string | null = null;
   /** The special NPC's menu entry (NPC.topic), e.g. the shop's name. */

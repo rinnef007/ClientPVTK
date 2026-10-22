@@ -5,14 +5,18 @@
 // conditions are ported — the others (level, money, map, buffs, city / country…) are not.
 // The NPC side (status per NPC, visibility, the finished-mission bitset) follows Mission.java for
 // ordinary maps only: city / country / mirror maps, escort and guide missions are not ported.
+import { Item } from '../actor/Item';
 import type { Player } from '../actor/Player';
 import { PowerString } from '../string/PowerString';
 import { isNullText } from '../common/Tool';
+import { DataInputStream } from '../common/DataStream';
 
 export const CONDITION_KILL_MONSTER = 2;
 export const CONDITION_HAVE_ITEM = 7;
 /** "Mission `itemId` finished" (Condition.isConditionOfSatisfy case 9 → Mission.isMissionFinish). */
 export const CONDITION_MISSION_FINISHED = 9;
+/** "Be on map `itemId`" (case 12 → GameWorld.getCurMapID). */
+export const CONDITION_MAP = 12;
 
 /** Mission.setting bit for random ("challenge") missions. */
 export const MISSION_IS_RANDOM = 2097152;
@@ -29,6 +33,42 @@ export class Condition {
     /** Item id (type 7). */
     readonly itemId = 0,
   ) {}
+
+  /** GameWorld.getCurMapID for the map condition (Mission does not import the world). */
+  static curMapId: () => number = () => 0;
+
+  /**
+   * Condition.fromBytes (1.2.0): type, "not" flag, then the raw data, decoded here for the types the
+   * web client checks — 2 (monster id, name, need, done), 7 (item id, name, need), 9 / 12 (mission or
+   * map id, name). Other types keep only their type and are treated as met.
+   */
+  static fromBytes(dis: DataInputStream): Condition {
+    const type = dis.readByte();
+    dis.readByte(); // not
+    const raw = new Uint8Array(dis.readByte() & 0xff);
+    for (let i = 0; i < raw.length; i++) raw[i] = dis.readByte() & 0xff;
+    const d = new DataInputStream(raw);
+    try {
+      if (type === CONDITION_KILL_MONSTER) {
+        const monster = d.readShort();
+        const name = d.readUTF();
+        const need = d.readByte();
+        return new Condition(type, name, need, d.readByte(), monster);
+      }
+      if (type === CONDITION_HAVE_ITEM) {
+        const id = d.readInt();
+        const name = d.readUTF();
+        return new Condition(type, name, d.readByte(), 0, id);
+      }
+      if (type === CONDITION_MISSION_FINISHED || type === CONDITION_MAP) {
+        const id = d.readShort();
+        return new Condition(type, d.readUTF(), 1, 0, id);
+      }
+    } catch {
+      // Short data: keep the type only, like an unknown condition.
+    }
+    return new Condition(type, '', 0);
+  }
 
   private progress(p: Player | null): number {
     if (this.type === CONDITION_HAVE_ITEM) return p?.bag?.getItemNumByIdInBag(this.itemId) ?? 0;
@@ -47,6 +87,7 @@ export class Condition {
     if (p == null) return false;
     if (this.type === CONDITION_KILL_MONSTER || this.type === CONDITION_HAVE_ITEM) return this.progress(p) >= this.need;
     if (this.type === CONDITION_MISSION_FINISHED) return Mission.isMissionFinish(p, this.itemId);
+    if (this.type === CONDITION_MAP) return Condition.curMapId() === this.itemId;
     return true;
   }
 }
@@ -83,8 +124,84 @@ export class Mission {
   acceptCondition: Condition[] | null = null;
   /** Offered right after this one is handed in (doSubmitEndCheck). */
   submitNextMissionID = 0;
+  /** Where the mission radar points (Mission.radarMapID / radarGx / radarGy). */
+  radarMapID = 0;
+  radarGx = 0;
+  radarGy = 0;
+  /** Items given on hand-in (Item.fromMissionBytes: id, count, name, icon, grade). */
+  rewardItems: Item[] = [];
 
   constructor(private readonly id: number) {}
+
+  /**
+   * Mission.fromBytes (1.2.0, jadx decompile). The city / country rewards, jump and battle ids and
+   * the escort deposit are read past; reward items to choose are read like the fixed ones.
+   */
+  static fromBytes(data: Uint8Array): Mission {
+    const dis = new DataInputStream(data);
+    const m = new Mission(dis.readShort());
+    m.name = dis.readUTF();
+    m.level = dis.readByte();
+    m.simpleDesc = dis.readUTF();
+    m.desc = dis.readUTF();
+    m.setting = dis.readShort() & 0xffff;
+    m.mapId = dis.readShort();
+    m.npcId = dis.readByte();
+    m.radarMapID = dis.readShort();
+    if (m.radarMapID > 0) {
+      m.radarGx = dis.readByte();
+      m.radarGy = dis.readByte();
+    }
+    m.dialogNotStartNotReady = dis.readUTF();
+    m.dialogStartNotFinish = dis.readUTF();
+    m.dialogStartFinish = dis.readUTF();
+    m.exp = dis.readInt();
+    m.money2 = dis.readShort();
+    m.money3 = dis.readShort();
+    if (m.setting & 512) {
+      // isHaveSpecailReward: honour, then the country / city rewards.
+      m.honor = dis.readShort();
+      for (let i = 0; i < 9; i++) dis.readShort();
+    }
+    if (m.setting & 32768) dis.readShort(); // isHaveSpecailReward2: countryArmy
+    if (m.setting & 1024) {
+      // isHaveSpecailExecute: accept / submit jumps, battles, next mission.
+      if (dis.readShort() > 0) (dis.readByte(), dis.readByte());
+      if (dis.readShort() > 0) (dis.readByte(), dis.readByte());
+      dis.readShort();
+      dis.readShort();
+      m.submitNextMissionID = dis.readShort();
+    }
+    if (m.setting & 64) {
+      // isEscort: deposit in three moneys, then two bytes.
+      for (let i = 0; i < 3; i++) dis.readInt();
+      dis.readByte();
+      dis.readByte();
+    }
+    const readItems = () => {
+      const out: Item[] = [];
+      for (let n = dis.readByte(); n > 0; n--) {
+        const it = new Item();
+        it.id = dis.readShort() & 0xffff;
+        it.quantity = dis.readByte();
+        it.name = dis.readUTF();
+        it.bagIcon = dis.readByte() & 0xff;
+        it.grade = dis.readByte();
+        out.push(it);
+      }
+      return out;
+    };
+    m.rewardItems = readItems();
+    readItems(); // selectItems: choosing a reward is not ported
+    const readConditions = () => {
+      const out: Condition[] = [];
+      for (let n = dis.readByte(); n > 0; n--) out.push(Condition.fromBytes(dis));
+      return out.length > 0 ? out : null;
+    };
+    m.acceptCondition = readConditions();
+    m.submitCondition = readConditions();
+    return m;
+  }
 
   getId(): number {
     return this.id;

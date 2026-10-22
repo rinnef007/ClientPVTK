@@ -28,6 +28,9 @@ import { MyPet } from '../game/actor/MyPet';
 import * as WorldMessage from '../game/main/WorldMessage';
 import { applyPlayerDetail, buildOnlineMap, buildOnlineNpcs } from '../game/main/OnlineWorld';
 import type { OnlineWorld } from '../net/online/LoginFlow';
+import { MoveSync } from '../net/online/MoveSync';
+import { Condition } from '../game/core/Mission';
+import { online as onlineState } from '../net/online/Online';
 import { DEMO_SHOP_ID, fillDemoPlayer, makeDemoNpcMissions, makeDemoShopGoods } from '../game/demo/DemoData';
 import { setDemoShop } from '../game/main/ShopServer';
 import { TYPE_SHOP_ITEM } from '../game/ui/screens/shop';
@@ -128,6 +131,7 @@ export class MapScene implements Scene {
 
   private async load(): Promise<void> {
     const online = this.online;
+    Condition.curMapId = () => GameWorld.gameMap?.getMapID() ?? 0;
     const map = online ? await buildOnlineMap(online.enter) : GameMap.loadMap(buildTestMap());
     if (!map) {
       this.status = 'Lỗi đọc dữ liệu bản đồ';
@@ -176,7 +180,10 @@ export class MapScene implements Scene {
     GameWorld.otherModels.clear();
     GameWorld.setNpcList(npcs);
     GameWorld.setDoNpc(doNpc);
+    setOnMissionReward((p) => this.refreshHud(p));
     WorldPanel.clearMyMove();
+    onlineState.session = online.session;
+    onlineState.moveSync = new MoveSync(me.getGx(), me.getGy(), (m) => online.session.net.send(m));
     map.models = [me, ...npcs];
     map.camera = me;
     map.init();
@@ -335,6 +342,8 @@ export class MapScene implements Scene {
     if (this.online) {
       this.online.session.pump();
       this.online.session.takeUnhandled();
+      const me = GameWorld.myPlayer;
+      if (me) onlineState.moveSync?.tick(me.getGx(), me.getGy());
     }
     // Stage 60 (world map): the map and its dialogs take the input; the world does not run.
     if (WorldMap.isActive()) {
@@ -420,6 +429,8 @@ export class MapScene implements Scene {
 
   private leave(): void {
     this.online?.session.net.close();
+    onlineState.session = null;
+    onlineState.moveSync = null;
     WorldMap.clean();
     GameWorld.setMyPlayer(null);
     GameWorld.setNpcList([]);

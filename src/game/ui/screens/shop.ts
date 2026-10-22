@@ -9,10 +9,12 @@
 import { GContainer, GIcon, GLabel, GWidget, GWindow, uiScreen } from '../../gui/GWidget';
 import { MessageFrame } from '../../core/MessageFrame';
 import { ShopItem } from '../../core/ShopItem';
-import { Item } from '../../actor/Item';
+import { Item, copyAsItem } from '../../actor/Item';
 import { ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, type Player } from '../../actor/Player';
 import * as GameWorld from '../../main/GameWorld';
-import { simBuy, simSell, simShopList } from '../../main/ShopServer';
+import { setPlayerMoney, simBuy, simSell, simShopList } from '../../main/ShopServer';
+import { online } from '../../../net/online/Online';
+import { createItemShopBuy, createItemShopListMsg, createItemShopSell, readBuyReply, readSellReply, readShopList } from '../../../net/online/ShopMessages';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { UIObject, registerPageUpdater } from '../UIObject';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
@@ -63,6 +65,20 @@ function rowOf(win: GWindow, w: GWidget | null): GWidget | null {
  * kinds Java tells apart by id ranges (Define.isSoldierShop…) are not known offline.
  */
 export function doBrowseShop(id: number): void {
+  const session = online.session;
+  if (session) {
+    // ShopItem.openItemShop against the user's backend.
+    void session
+      .request(createItemShopListMsg(id))
+      .then((r) => {
+        const goods = readShopList(r, id);
+        if (goods.length === 0) return;
+        shopID = id;
+        createShopItemUI(goods, 0);
+      })
+      .catch((e) => alertMessage(e instanceof Error ? e.message : String(e), 'Lỗi'));
+    return;
+  }
   const list = simShopList(id);
   if (list == null) {
     alertMessage(STR_NEED_SERVER);
@@ -277,6 +293,10 @@ function doItemShopBuyMsg(p: Player, item: ShopItem, n: number, done: () => void
   const [m1, m2, m3] = [item.money1 * n, item.money2 * n, item.money3 * n];
   const buy = () => {
     if (!checkEnoughMoney(p, m1, m2, m3)) return;
+    if (online.session) {
+      void buyOnline(p, item, n, done);
+      return;
+    }
     const r = simBuy(p, item, n);
     if (!r.ok) {
       alertMessage(r.text, 'Lỗi'); // UIHandler.errorMessage
@@ -297,6 +317,10 @@ function doItemShopBuyMsg(p: Player, item: ShopItem, n: number, done: () => void
 /** ShopItem.doItemshopSellMsg: always asks, then sells (ShopServer). */
 function doItemshopSellMsg(p: Player, item: Item, n: number, done: () => void): void {
   confirm(STR_TIP, `Đồng ý bán ${item.getNameInfo()} không?`, () => {
+    if (online.session) {
+      void sellOnline(p, item, n, done);
+      return;
+    }
     const r = simSell(p, item, n);
     if (!r.ok) {
       alertMessage(r.text, 'Lỗi');
@@ -305,6 +329,50 @@ function doItemshopSellMsg(p: Player, item: Item, n: number, done: () => void): 
     alertMessage(`Bán thành công${item.getNameInfo()}${STR_X}${n}`);
     done();
   });
+}
+
+/** GameWorld.shopID: the shop being browsed (sent with buy / sell requests). */
+let shopID = 0;
+
+/** The rest of doItemShopBuyMsg once the backend answers. */
+async function buyOnline(p: Player, item: ShopItem, n: number, done: () => void): Promise<void> {
+  try {
+    const r = readBuyReply(await online.session!.request(createItemShopBuy(shopID, item, n)));
+    if (r.kind === 'priceChanged') {
+      alertMessage('Người quản lý đã điều chỉnh thuế suất khiến giá tiền thay đổi, mời bạn xem!'); // STR_COUNTRY_PRICE_ADUST
+      return;
+    }
+    if (r.kind === 'appearance') {
+      alertMessage('Đổi kiểu tóc / khuôn mặt chưa được hỗ trợ.', 'Lỗi');
+      return;
+    }
+    item.maxBuy = r.maxBuy;
+    item.allCount = r.allCount;
+    if (r.id !== item.id || r.count !== n) return;
+    p.bag?.addItem(copyAsItem(item), n);
+    const money = setPlayerMoney(p, ...r.money);
+    alertMessage(`Mua thành công${item.getNameInfo()}${STR_X}${n}\n${money}`);
+    done();
+  } catch (e) {
+    alertMessage(e instanceof Error ? e.message : String(e), 'Lỗi');
+  }
+}
+
+/** doItemshopSellMsg: the bag loses the items, the reply carries the new Bạc (setMoneyByType 13). */
+async function sellOnline(p: Player, item: Item, n: number, done: () => void): Promise<void> {
+  try {
+    const bac = readSellReply(await online.session!.request(createItemShopSell(shopID, item.id, item.slotPos, n)));
+    const bag = p.bag;
+    if (bag) {
+      item.quantity -= n;
+      if (item.quantity <= 0) bag.setItem(item.slotPos, null);
+    }
+    p.set(ATTR_MONEY3, bac);
+    alertMessage(`Bán thành công${item.getNameInfo()}${STR_X}${n}`);
+    done();
+  } catch (e) {
+    alertMessage(e instanceof Error ? e.message : String(e), 'Lỗi');
+  }
 }
 
 registerPageUpdater(TYPE_SHOP_ITEM, updateShopItemPage);

@@ -287,6 +287,13 @@ function readEquipTail(m: Message, it: Item): void {
 /** Item.fromBytes: fromBytesAtts1 (bag state) then fromBytesAtts2 (the item's data by class). */
 export function readItem(m: Message): Item {
   const it = new Item();
+  readItemAtts1(m, it);
+  readItemAtts2(m, it);
+  return it;
+}
+
+/** Item.fromBytesAtts1: count, durability, attachment, slot and the time limit. */
+function readItemAtts1(m: Message, it: Item): void {
   it.quantity = m.getShort();
   m.getShort(); // durability
   it.attachDone = m.getByte();
@@ -300,6 +307,10 @@ export function readItem(m: Message): Item {
     it.expireTime = Date.now() + minutes * 60000;
   }
   it.binded = (status & 2) !== 0;
+}
+
+/** Item.fromBytesAtts2: type, then the data of the item's class (shop goods start here). */
+export function readItemAtts2(m: Message, it: Item): void {
   it.type = m.getByte();
   const cls = it.getItemClass();
   if (cls === 3) {
@@ -312,7 +323,7 @@ export function readItem(m: Message): Item {
     it.icon = BigInt(m.getShort());
     it.reqLv = m.getByte();
     m.getByte(); // vipLevelReq
-    return it;
+    return;
   }
   it.id = u16(m);
   it.name = m.getString();
@@ -357,7 +368,6 @@ export function readItem(m: Message): Item {
   } else if (cls === 5 || cls === 7) {
     it.price = m.getInt();
   }
-  return it;
 }
 
 /** processPlayerEnterMsg after the status byte: the money tables, then processDataBlockFlagMsg. */

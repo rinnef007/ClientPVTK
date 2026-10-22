@@ -8,6 +8,7 @@ import {
   ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP,
   ATTR_MP_MAX, type Player,
 } from '../actor/Player';
+import { Mission } from '../core/Mission';
 import { GameMap } from '../map/GameMap';
 import { GameSprite, preloadSprite } from '../sprite/GameSprite';
 import type { EnterGameData, PlayerDetail } from '../../net/online/EnterGame';
@@ -64,6 +65,9 @@ export function applyPlayerDetail(p: Player, d: PlayerDetail, enter: EnterGameDa
   p.bag = bag;
   p.skillList = enter.skills;
   if (enter.missionStatus) p.missionStatus.set(enter.missionStatus.subarray(0, p.missionStatus.length));
+  // processDataPlayerMission: the missions in progress.
+  p.missionList = [];
+  for (const blob of enter.missions) p.addMission(Mission.fromBytes(blob));
   p.setPosition(enter.gx, enter.gy);
 }
 

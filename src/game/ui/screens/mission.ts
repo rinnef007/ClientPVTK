@@ -20,6 +20,12 @@ import { simAcceptMission, simDeleteMission, simRefreshNpcSigns, simSubmitMissio
 import { PowerString } from '../../string/PowerString';
 import { SURE_YES, waitForTwiceSureUI } from './twiceSure';
 import { doBrowseShop } from './shop';
+import { online } from '../../../net/online/Online';
+import type { Message } from '../../../net/Message';
+import {
+  MSG_MISSION_ABANDON, MSG_MISSION_ACCEPT, MSG_MISSION_DELIVER, checkStatus, createGetMissionDataMsg,
+  createTaskAbandonMsg, createTaskAcceptMsg, createTaskDeliverMsg, readMissionData, readMissionReward, readNpcStatus,
+} from '../../../net/online/MissionMessages';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { UIObject } from '../UIObject';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
@@ -369,8 +375,19 @@ function doMenuButton(ui: UIHandler, o: MissionUIObj, ev: number): boolean {
     // waitForTwiceSureUI blocks in Java; here the box answers through a callback and the details
     // dialog stays open until then (it closes once the mission is given up).
     waitForTwiceSureUI(STR_CANCEL, `Mi đồng ý hủy nhiệm vụ </cff0000${m.name}/p> không?`, (r) => {
-      if (r === SURE_YES && giveUp(ui.parent, o)) ui.close();
+      if (r !== SURE_YES) return;
+      if (online.session) void giveUpOnline(ui, o);
+      else if (giveUp(ui.parent, o)) ui.close();
     }, 6);
+    return false;
+  }
+  if (online.session && (ev === EVENT_ACCEPT || ev === EVENT_SUBMIT)) {
+    // The backend answers later: the dialog closes when it accepts (Java blocks in waitForRequest).
+    void (ev === EVENT_ACCEPT ? acceptOnline(p, npc, m) : submitOnline(p, npc, m)).then((ok) => {
+      if (!ok) return;
+      ui.close();
+      ui.parent?.notifyLayerAction(110);
+    });
     return false;
   }
   let ok = false;
@@ -378,6 +395,77 @@ function doMenuButton(ui: UIHandler, o: MissionUIObj, ev: number): boolean {
   else if (ev === EVENT_SUBMIT) ok = doSubmitMissionMsg(p, npc, m);
   if (ok) ui.parent?.notifyLayerAction(110);
   return ok;
+}
+
+// --- the same requests sent to the user's backend (MsgHandler + Mission.do*Msg, 1.2.0) ---
+
+/** Sends a mission request and reads the status byte and the NPC signs (processMissionNPCStatus). */
+async function askServer(req: Message): Promise<Message | null> {
+  const session = online.session;
+  if (session == null) return null;
+  try {
+    const r = await session.request(req);
+    checkStatus(r);
+    for (const [id, sign] of readNpcStatus(r)) GameWorld.getNpcByID(id)?.setSign(sign);
+    return r;
+  } catch (e) {
+    alertMessage(e instanceof Error ? e.message : String(e), 'Lỗi');
+    return null;
+  }
+}
+
+/** Mission.doAcceptMissionMsg: false → the mission is taken; true → finished at once (reward). */
+async function acceptOnline(p: Player | null, npc: NPC | null, m: Mission): Promise<boolean> {
+  if (p == null || npc == null) return false;
+  const r = await askServer(createTaskAcceptMsg(npc.getId(), m.getId()));
+  if (r == null || r.type !== MSG_MISSION_ACCEPT) return false;
+  if (!r.getBoolean()) {
+    p.addMission(m);
+    if (!isNullText(m.simpleDesc)) WorldMessage.addPromptMsg(`Sơ lược: ${m.simpleDesc}`);
+    return true;
+  }
+  if (r.getByte() !== 0) {
+    alertMessage(r.getString(), 'Lỗi'); // UIHandler.errorMessage
+    return false;
+  }
+  rewardOnline(p, r, m);
+  return true;
+}
+
+/** Mission.doSubmitMissionMsg + processTaskDeliverMsg, then doSubmitEndCheck. */
+async function submitOnline(p: Player | null, npc: NPC | null, m: Mission): Promise<boolean> {
+  if (p == null || npc == null) return false;
+  const r = await askServer(createTaskDeliverMsg(npc.getId(), m.getId()));
+  if (r == null || r.type !== MSG_MISSION_DELIVER) return false;
+  p.submitMission(m);
+  rewardOnline(p, r, m);
+  const next = m.submitNextMissionID > 0 ? npc.getMissonById(m.submitNextMissionID) : null;
+  if (next != null) {
+    UIHandler.closeAllUI();
+    handleChoiceMissionAction(next, npc);
+  }
+  return true;
+}
+
+/** processMissionReward (with WorldMessage.addPointMsg) and the HUD refresh. */
+function rewardOnline(p: Player, r: Message, m: Mission): void {
+  try {
+    const { text } = readMissionReward(r, p, m.getId());
+    if (!isNullText(text)) WorldMessage.addPointMsg(text);
+  } catch (e) {
+    alertMessage(e instanceof Error ? e.message : String(e), 'Lỗi');
+  }
+  onMissionReward(p);
+}
+
+/** Mission.doDeleteMissionMsg. */
+async function giveUpOnline(ui: UIHandler, o: MissionUIObj): Promise<void> {
+  if (o.player == null || o.mission == null || o.player.getMissionById(o.mission.getId()) == null) return;
+  const r = await askServer(createTaskAbandonMsg(o.mission.getId()));
+  if (r == null || r.type !== MSG_MISSION_ABANDON) return;
+  o.player.deleteMission(o.mission);
+  ui.close();
+  ui.parent?.notifyLayerAction(110);
 }
 
 /** doDeleteMissionMsg after "Hủy" is confirmed; the mission list below refreshes. */
@@ -442,10 +530,29 @@ export function doNpc(npc: NPC): boolean {
   const p = GameWorld.myPlayer;
   if (!npc.isEnable() || p == null) return false;
   p.setAnimationByDir(false);
-  if (Mission.isHaveSubmitMission(p, npc, curMapId())) doMissionNpc(p, npc);
-  else if (doSpecialNpc(p, npc)) return true;
-  else if (npc.talkDetail != null || npc.missions.length > 0) doMissionNpc(p, npc);
+  // doGetMissionData for mission NPCs (types 0, 5), once unless status bit 16 asks every time.
+  const session = online.session;
+  if (session && (npc.npcType === 0 || npc.npcType === 5) && ((npc.status & 16) !== 0 || !npc.missionsLoaded)) {
+    npc.missionsLoaded = true;
+    online.moveSync?.syncMoveTo(p.getGx(), p.getGy());
+    void session
+      .request(createGetMissionDataMsg(npc.getId()))
+      .then((r) => {
+        npc.missions = readMissionData(r);
+        doNpcWithMissions(p, npc);
+      })
+      .catch((e) => alertMessage(e instanceof Error ? e.message : String(e), 'Lỗi'));
+    return true;
+  }
+  doNpcWithMissions(p, npc);
   return true;
+}
+
+/** The rest of NPC.doNpc, once the NPC's missions are known. */
+function doNpcWithMissions(p: Player, npc: NPC): void {
+  if (Mission.isHaveSubmitMission(p, npc, curMapId())) doMissionNpc(p, npc);
+  else if (doSpecialNpc(p, npc)) return;
+  else if (npc.talkDetail != null || npc.missions.length > 0) doMissionNpc(p, npc);
 }
 
 /** NPC.doSpecialNpc: the NPC's topic and "Rời đi" (the "(Bản cũ)" entry of type 9 is not ported). */
