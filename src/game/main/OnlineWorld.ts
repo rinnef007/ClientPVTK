@@ -10,7 +10,8 @@ import {
 import { Mission } from '../core/Mission';
 import { GameMap } from '../map/GameMap';
 import { GameSprite, preloadSprite } from '../sprite/GameSprite';
-import type { EnterGameData, PlayerDetail } from '../../net/online/EnterGame';
+import type { EnterGameData, PetDetail, PlayerDetail } from '../../net/online/EnterGame';
+import { MyPet } from '../actor/MyPet';
 import { gunzip, type NpcData } from '../../net/online/WorldData';
 
 const ATTR_SKILL_POINTS = 5;
@@ -73,6 +74,28 @@ export function applyPlayerDetail(p: Player, d: PlayerDetail, enter: EnterGameDa
   p.missionList = [];
   for (const blob of enter.missions) p.addMission(Mission.fromBytes(blob));
   p.setPosition(enter.gx, enter.gy);
+  p.setPet(buildOnlinePet(p, enter.pet));
+}
+
+/** MyPet.fromBytesMyPlayer: the player's active pet with its battle values (formulas on). */
+export function buildOnlinePet(owner: Player, d: PetDetail | null): MyPet | null {
+  if (d == null) return null;
+  const pet = new MyPet(owner);
+  Object.assign(pet, {
+    id: d.id, name: d.name, level: d.level, icon1: d.icon1, str: d.str, con: d.con, agi: d.agi, ilt: d.ilt, wis: d.wis,
+    grow: d.grow, compre: d.compre, cp: d.cp, growLevel: d.growLevel, petHitrate: d.petHitrate, atkType: d.atkType,
+    atkMin: d.atkMin, atkMax: d.atkMax, petAtkTime: d.petAtkTime, job: d.job, grade: d.grade, autoSkillID: d.autoSkillID,
+    autoSkillID_Initiative: d.autoSkillID_Initiative, skillList: d.skills, vipLevel: d.vipLevel, bornStatus: d.bornStatus,
+    petHeadIcon: d.headIcon, ageTime: Date.now() + Number(d.ageLeft),
+  });
+  pet.formulas = true;
+  pet.set(ATTR_LEVEL, d.level);
+  pet.set(ATTR_EXP, d.exp);
+  pet.set(ATTR_EXP_MAX, d.expMax);
+  pet.set(ATTR_HP, d.hp);
+  pet.set(ATTR_MP, d.mp);
+  pet.set(ATTR_SKILL_POINTS, d.sp);
+  return pet;
 }
 
 /** NPC.loadNPC + init + initSprite: one NPC per entry, its sprite from icon1. */

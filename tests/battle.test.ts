@@ -107,3 +107,52 @@ describe('Battle (local)', () => {
     expect(p.get(36)).toBe(atk);
   });
 });
+
+import { Message } from '../src/net/Message';
+import { MyPet } from '../src/game/actor/MyPet';
+import { Mission, Condition, CONDITION_KILL_MONSTER } from '../src/game/core/Mission';
+import { readLocalBattleReward } from '../src/net/online/BattleMessages';
+
+function reply(type: number, write: (m: Message) => void): Message {
+  const w = new Message(type, 4096);
+  write(w);
+  return new Message(type, w.payload());
+}
+
+describe('12502 local battle reward', () => {
+  it('reads money, exp, kills (missions) and the trailing flags as the backend writes them', () => {
+    const p = hero();
+    p.set(1, 400);
+    const m = new Mission(9001);
+    m.submitCondition = [new Condition(CONDITION_KILL_MONSTER, 'Mèo Hoang', 3, 1, 1)];
+    p.addMission(m);
+    const r = reply(12502, (w) => {
+      w.putByte(2);
+      w.putInt(15); // money
+      w.putInt(120); w.putByte(0); // exp, no level gained
+      w.putInt(0); w.putByte(0); // god exp, levels
+      w.putBoolean(false); w.putBoolean(false); // bag full, pet reward
+      w.putByte(1); w.putShort(1); w.putByte(1); // kills: monster 1 ×1
+      w.putBoolean(false); // escort
+      w.putByte(0); // items
+      w.putByte(0); // npc signs
+      w.putBoolean(true); w.putByte(0); w.putBoolean(false); w.putBoolean(true);
+    });
+    const out = readLocalBattleReward(r, p);
+    expect(out.won).toBe(true);
+    expect(p.get(13)).toBe(15);
+    expect(p.get(0)).toBe(120);
+    expect(m.submitCondition[0].done).toBe(2);
+    expect(out.powerEnded).toBe(false);
+  });
+});
+
+describe('MyPet.get', () => {
+  it('HP max = con×6.5 + str×3 + 100 + (level−1)×20', () => {
+    const pet = new MyPet(hero());
+    pet.formulas = true;
+    [pet.str, pet.con] = [5, 5];
+    pet.set(106, 3);
+    expect(pet.get(29)).toBe(32 + 15 + 100 + 40);
+  });
+});

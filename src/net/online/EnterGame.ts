@@ -85,9 +85,30 @@ export interface PetDetail {
   mp: number;
   exp: number;
   expMax: number;
-  grade: number;
+  sp: number;
+  str: number;
+  con: number;
+  agi: number;
+  ilt: number;
+  wis: number;
+  grow: number;
+  compre: number;
+  cp: number;
+  growLevel: number;
+  /** ms of life left (MyPet.ageTime − now). */
+  ageLeft: bigint;
+  petHitrate: number;
+  atkType: number;
+  atkMin: number;
+  atkMax: number;
+  petAtkTime: number;
   job: number;
+  grade: number;
+  autoSkillID: number[];
+  autoSkillID_Initiative: number;
   skills: Skill[];
+  vipLevel: number;
+  bornStatus: bigint;
   headIcon: number;
 }
 
@@ -235,25 +256,29 @@ export function readPetDetail(m: Message): PetDetail | null {
   const name = m.getString();
   const level = m.getByte();
   const icon1 = m.getLong();
-  const [hp, mp, exp, expMax] = [m.getInt(), m.getInt(), m.getInt(), m.getInt()];
-  m.getInt(); // sp
-  for (let i = 0; i < 5; i++) m.getShort(); // str … wis
-  for (let i = 0; i < 4; i++) m.getByte(); // grow, compre, cp, growLevel
-  m.getLong(); // age time
-  m.getShort(); // petHitrate
-  m.getByte(); // atkType
-  m.getShort(); // atkMin
-  m.getShort(); // atkMax
-  m.getByte(); // petAtkTime
+  const [hp, mp, exp, expMax, sp] = [m.getInt(), m.getInt(), m.getInt(), m.getInt(), m.getInt()];
+  const [str, con, agi, ilt, wis] = [m.getShort(), m.getShort(), m.getShort(), m.getShort(), m.getShort()];
+  const [grow, compre, cp, growLevel] = [m.getByte(), m.getByte(), m.getByte(), m.getByte()];
+  const ageLeft = m.getLong();
+  const petHitrate = m.getShort();
+  const atkType = m.getByte();
+  const atkMin = m.getShort();
+  const atkMax = m.getShort();
+  const petAtkTime = m.getByte();
   const job = m.getByte();
   const grade = m.getByte();
-  for (let i = m.getByte(); i > 0; i--) m.getShort(); // autoSkillID
-  m.getShort(); // autoSkillID_Initiative
+  const autoSkillID: number[] = [];
+  for (let i = m.getByte(); i > 0; i--) autoSkillID.push(m.getShort());
+  const autoSkillID_Initiative = m.getShort();
   const skills = readSkillList(m, false);
-  m.getByte(); // vipLevel
-  m.getLong(); // bornStatus
+  const vipLevel = m.getByte();
+  const bornStatus = m.getLong();
   const headIcon = m.getShort();
-  return { id, name, level, icon1, hp, mp, exp, expMax, grade, job, skills, headIcon };
+  return {
+    id, name, level, icon1, hp, mp, exp, expMax, sp, str, con, agi, ilt, wis, grow, compre, cp, growLevel, ageLeft,
+    petHitrate, atkType, atkMin, atkMax, petAtkTime, job, grade, autoSkillID, autoSkillID_Initiative, skills, vipLevel,
+    bornStatus, headIcon,
+  };
 }
 
 /** Item.fromItemAscensionStarInfo. */

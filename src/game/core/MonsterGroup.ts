@@ -2,6 +2,7 @@
 // position (10, or 20 with flag 1) and up to 4 allied NPC fighters (flag 2), from the 10503 world
 // data (block 2048). getLocalBattlePlayerList lines them up with the player (25) and pet (24).
 import { Monster } from '../actor/Monster';
+import { MyPet } from '../actor/MyPet';
 import type { Player } from '../actor/Player';
 import type { Message } from '../../net/Message';
 
@@ -59,7 +60,7 @@ export class MonsterGroup {
     me.position = MY_POS;
     list[MY_POS] = me;
     const pet = me.getPet();
-    if (pet != null && pet.get(2) > 0) {
+    if (pet != null && (pet instanceof MyPet ? pet.isAlive() : pet.get(2) > 0)) {
       pet.position = MY_PET_POS;
       list[MY_PET_POS] = pet;
     }

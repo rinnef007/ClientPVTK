@@ -156,6 +156,8 @@ export class MapScene implements Scene {
     me.setAnimationByDir(false);
     if (online && detail) {
       applyPlayerDetail(me, detail, online.enter);
+      const pet = me.getPet();
+      if (pet instanceof MyPet) pet.setPlayerSprite(await resolveSprite(() => pet.createSprite()));
       online.session.net.getMapId = () => map.getMapID();
     } else {
       me.id = 1;
