@@ -4,6 +4,7 @@
 // (Skill.fromBaseBytes); offline they are demo data. getPowerDesc is ported for the 118 cases that
 // follow the plain "Name+value[suffix]" form; the other 79 (states, revive, item effects…) are not.
 import { isNullText } from '../common/Tool';
+import { isValidSkillWeapon } from './DefineBattle';
 import { uiFont } from '../gui/GWidget';
 import { PowerString } from '../string/PowerString';
 
@@ -197,6 +198,8 @@ export function composeString(items: [string, number | null][], width: number): 
 }
 
 export class Skill {
+  /** Skill.DUMMY_SKILL: stands for "no skill" in the battle formulas. */
+  static readonly DUMMY = new Skill();
   id = 0;
   name = '';
   info = '';
@@ -219,6 +222,54 @@ export class Skill {
   statusBit1 = 0;
   statusBit2 = 0;
   statusBit3 = 0;
+  /** Battle animation (start / trace ids) and the caster's position effect. */
+  anime1 = 0;
+  anime2 = 0;
+  anime3 = 0;
+  position = 0;
+
+  /** Skill.get: 1 is the attack type. */
+  get(id: number): number {
+    return id === 1 ? this.skillAtkType : 0;
+  }
+
+  /** Skill.isEnoughHP: an HP cost leaves at least 1 HP. */
+  isEnoughHP(p: { get(id: number): number } | null): boolean {
+    if (this.useHP <= 0) return true;
+    return p != null && p.get(2) >= this.useHP + 1;
+  }
+
+  /** Skill.isRebornSkill: one of its powers revives (80, 97). */
+  isRebornSkill(): boolean {
+    return [this.power1, this.power2, this.power3].some((p) => p === 80 || p === 97);
+  }
+
+  /** Skill.isCanUse: MP / HP cost and, for players, the weapon limit; the reason goes to `why`. */
+  static isCanUse(p: { get(id: number): number; getType(): number } | null, s: Skill | null, why?: string[]): boolean {
+    if (p == null || s == null) return false;
+    if (p.get(3) < s.useMP) {
+      why?.push('MP không đủ');
+      return false;
+    }
+    if (!s.isEnoughHP(p)) {
+      why?.push('HP không đủ');
+      return false;
+    }
+    if (p.getType() === 3) {
+      const a = p.get(71);
+      const b = p.get(72);
+      if (s.type === 3 && ((a === -400 && b === -400) || (a === -400 && b === -1) || (a === -1 && b === -400))) {
+        why?.push('Vũ khí hỏng');
+        return false;
+      }
+      if (!isValidSkillWeapon(a, b, s.skillWeapon)) {
+        why?.push('Vũ khí không hợp');
+        return false;
+      }
+    }
+    return true;
+  }
+
   /** Skill.getPowerValue: the value of `power` among the skill's three powers. */
   getPowerValue(power: number): number {
     let v = 0;

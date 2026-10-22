@@ -1,10 +1,19 @@
 // Reader for the world data reply (10503) block 1024: the map's NPCs, gzip-wrapped, in the format of
 // NPC.loadNPC / NPC.fromBytes of client 1.2.0 (jadx decompile). NPC.readMissionNPCData is empty in
 // 1.2.0, so mission NPCs (type 0) carry nothing after the common part.
+// Blocks 2048 / 4096 carry the monster groups, monsters and their AI (MsgHandler
+// processDataMonsterGroupMsg / processDataMonsterMsg / processDataMonsterAIMsg).
+import { Monster } from '../../game/actor/Monster';
+import { MonsterAI } from '../../game/battle/MonsterAI';
 import { DataInputStream } from '../../game/common/DataStream';
+import { MonsterGroup } from '../../game/core/MonsterGroup';
+import type { Skill } from '../../game/core/Skill';
 import { Message } from '../Message';
+import { readSkill } from './EnterGame';
 
 export const BLOCK_NPC = 1024;
+export const BLOCK_MONSTER_GROUPS = 2048;
+export const BLOCK_MONSTERS = 4096;
 
 /** A menu entry of a "power" NPC (type 5): its text, target id and the mission state it needs. */
 export interface NpcMenu {
@@ -138,13 +147,49 @@ export async function gunzip(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** The 10503 reply when only block 1024 was asked for: status, header, then the NPC bytes. */
-export async function readWorldNpcs(m: Message): Promise<NpcData[]> {
+export interface WorldData {
+  npcs: NpcData[];
+  groups: MonsterGroup[];
+  monsters: Monster[];
+}
+
+/** processDataMonsterMsg then processDataMonsterAIMsg (only when monsters came). */
+function readMonsters(m: Message, out: Monster[]): void {
+  const n = m.getByte();
+  if (n <= 0) return;
+  for (let i = 0; i < n; i++) {
+    const o = Monster.fromBytes(m);
+    if (o != null) out.push(o);
+  }
+  const skills: Skill[] = [];
+  for (let i = m.getByte(); i > 0; i--) skills.push(readSkill(m));
+  for (let i = m.getByte(); i > 0; i--) {
+    const ai = MonsterAI.fromBytes(m, skills);
+    const o = out.find((x) => x.id === ai.id);
+    if (o != null) o.monsterAI = ai;
+  }
+}
+
+/**
+ * The 10503 reply for blocks 1024 (NPCs), 2048 (monster groups) and 4096 (monsters): status,
+ * header, then the blocks in bit order. Other blocks are not expected here.
+ */
+export async function readWorldData(m: Message): Promise<WorldData> {
   if (m.getByte() !== 0) throw new Error(m.getString());
   m.getInt(); // map id
   m.getByte(); // gx
   m.getByte(); // gy
   const flags = m.getInt();
-  if (flags !== BLOCK_NPC) throw new Error(`10503: khối ${flags} ngoài khối NPC`);
-  return readNpcList(await gunzip(m.getBytes()));
+  const known = BLOCK_NPC | BLOCK_MONSTER_GROUPS | BLOCK_MONSTERS;
+  if ((flags & ~known) !== 0) throw new Error(`10503: khối ${flags & ~known} chưa hỗ trợ`);
+  const out: WorldData = { npcs: [], groups: [], monsters: [] };
+  if (flags & BLOCK_NPC) out.npcs = readNpcList(await gunzip(m.getBytes()));
+  if (flags & BLOCK_MONSTER_GROUPS) for (let i = m.getByte(); i > 0; i--) out.groups.push(MonsterGroup.fromBytes(m));
+  if (flags & BLOCK_MONSTERS) readMonsters(m, out.monsters);
+  return out;
+}
+
+/** The 10503 reply when only block 1024 was asked for. */
+export async function readWorldNpcs(m: Message): Promise<NpcData[]> {
+  return (await readWorldData(m)).npcs;
 }

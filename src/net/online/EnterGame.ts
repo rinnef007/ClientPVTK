@@ -205,10 +205,10 @@ export function readSkill(m: Message): Skill {
     s.atk_time = m.getByte();
     s.useMP = u16(m);
     s.useHP = u16(m);
-    m.getByte(); // anime1
-    m.getShort(); // anime2
-    m.getShort(); // anime3
-    m.getByte(); // position
+    s.anime1 = m.getByte();
+    s.anime2 = m.getShort();
+    s.anime3 = m.getShort();
+    s.position = m.getByte();
     s.statusBit1 = m.getByte();
     s.statusBit2 = m.getByte();
     s.statusBit3 = m.getByte();

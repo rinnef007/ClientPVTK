@@ -1,6 +1,7 @@
 // Port of the world-movement part of com.hz.main.Control (Vineflower decompile of classes2.dex).
-// Battle controls (skills, effects, escape) and their serialisation are not ported yet.
+// Battle controls (skills, effects, escape) are the records Battle makes for the battle animation.
 import { Model } from '../actor/Model';
+import { DataOutputStream } from '../common/DataStream';
 import * as GameWorld from './GameWorld';
 import { getDirByMovePixels } from './WorldPanel';
 
@@ -12,6 +13,14 @@ export const TYPE_MOVE_TO = 14;
 export const TYPE_MOVE = 15;
 export const TYPE_PIXEL_MOVE = 80;
 export const TYPE_CHANGE_STAGE = 81;
+export const TYPE_BATTLE_SKILL = 31;
+export const TYPE_BATTLE_ESCAPE = 32;
+export const TYPE_BATTLE_TARGET_EFFECT = 33;
+export const TYPE_BATTLE_SELF_EFFECT = 34;
+/** createBattleUseSkillControl flags: area byte present, a name, a second anime. */
+export const BCONTROL_HAS_AREA_LIST = 1;
+export const BCONTROL_HAS_NAME = 2;
+export const BCONTROL_HAS_ANIME2 = 4;
 
 const toByte = (v: number) => (v << 24) >> 24;
 
@@ -28,8 +37,60 @@ export class Control {
   private statusFlag = 0;
   subControlIndex = 0;
   subControls: (Control | null)[] | null = null;
+  /** createBattleUseSkillControl's serialised parameters (read by AnimationControl). */
+  datas: Uint8Array | null = null;
 
   constructor(public type: number) {}
+
+  /** Control.createBattleEscape: the model at `pos` runs away (`ok` = 1 succeeded). */
+  static createBattleEscape(pos: number, ok: number): Control {
+    const c = new Control(TYPE_BATTLE_ESCAPE);
+    c.byte0 = toByte(pos);
+    c.byte1 = toByte(ok);
+    return c;
+  }
+
+  /**
+   * Control.createBattleTargetEffect: a number / effect on the model at `pos` (`self` = on the
+   * caster); `effect` holds Battle.EFFECT_* bits, `anime` an optional animation.
+   */
+  static createBattleTargetEffect(pos: number, value: number, effect: number, anime: number, self = false): Control {
+    const c = new Control(self ? TYPE_BATTLE_SELF_EFFECT : TYPE_BATTLE_TARGET_EFFECT);
+    c.byte0 = toByte(pos);
+    c.counter = effect;
+    c.int0 = value;
+    c.int1 = anime;
+    return c;
+  }
+
+  /**
+   * Control.createBattleUseSkillControl: `pos` acts on `target` — skill area (-1 none), caster
+   * move (1 runs up), start anime, trace anime, hit anime and the name shown (skills / items).
+   */
+  static createBattleUseSkillControl(
+    pos: number, target: number, area: number, movePos: number, anime1: number, anime2: number, anime3: number, name: string | null,
+  ): Control {
+    const c = new Control(TYPE_BATTLE_SKILL);
+    c.byte0 = toByte(pos);
+    const out = new DataOutputStream();
+    out.writeByte(target);
+    let flags = area >= 0 ? BCONTROL_HAS_AREA_LIST : 0;
+    if (anime3 > 0) flags |= BCONTROL_HAS_ANIME2;
+    if (name != null) flags |= BCONTROL_HAS_NAME;
+    out.writeByte(flags);
+    if (flags & BCONTROL_HAS_AREA_LIST) out.writeByte(area);
+    out.writeByte(movePos);
+    out.writeByte(anime1);
+    out.writeShort(anime2);
+    if (flags & BCONTROL_HAS_ANIME2) out.writeShort(anime3);
+    if (flags & BCONTROL_HAS_NAME) out.writeUTF(name!);
+    c.datas = out.toByteArray();
+    return c;
+  }
+
+  setSubControlList(list: Control[]): void {
+    this.subControls = list;
+  }
 
   /** One grid step: `speed` px per tick in direction `dir` until 24 px are covered. */
   static createMove(modelId: number, dir: number, speed: number, modelType: number): Control {

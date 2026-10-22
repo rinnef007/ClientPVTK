@@ -381,6 +381,19 @@ export class PlayerBag {
     }
   }
 
+  /** PlayerBag.getBagItemBySlotPos: an item of the bag part (not equipment). */
+  getBagItemBySlotPos(slot: number): Item | null {
+    return slot >= BAG_START && slot < BAG_END ? this.getItem(slot) : null;
+  }
+
+  /** PlayerBag.removeBagItemByPos: takes `n` from the stack in `slot` (emptying it at 0). */
+  removeBagItemByPos(slot: number, n: number): void {
+    const it = this.getItem(slot);
+    if (it == null) return;
+    it.quantity -= n;
+    if (it.quantity <= 0) this.items.delete(slot);
+  }
+
   clearBag(): void {
     for (const s of [...this.items.keys()]) if (s >= BAG_START) this.items.delete(s);
   }

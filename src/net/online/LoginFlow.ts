@@ -10,13 +10,18 @@ import {
   readFirstGameServer, readPlayerEnterStatus, readPlayerList, readUserLogin, type ListPlayer, type NewPlayer,
 } from './LoginMessages';
 import type { OnlineSession } from './OnlineSession';
-import { BLOCK_NPC, readWorldNpcs, type NpcData } from './WorldData';
+import { BLOCK_MONSTER_GROUPS, BLOCK_MONSTERS, BLOCK_NPC, readWorldData, type NpcData } from './WorldData';
+import type { Monster } from '../../game/actor/Monster';
+import type { MonsterGroup } from '../../game/core/MonsterGroup';
 
 export interface OnlineWorld {
   session: OnlineSession;
   character: ListPlayer;
   enter: EnterGameData;
   npcs: NpcData[];
+  /** The battles of the map's monster NPCs (blocks 2048 / 4096). */
+  groups: MonsterGroup[];
+  monsters: Monster[];
   areaName: string;
 }
 
@@ -50,7 +55,8 @@ export async function runLogin(session: OnlineSession, o: LoginOptions): Promise
   const reply = await session.request(createPlayerEnterMsg(character.id, 0, o.deviceId));
   readPlayerEnterStatus(reply);
   const enter = readEnterGame(reply);
-  o.onStep('Tải NPC…');
-  const npcs = await readWorldNpcs(await session.request(createWorldDataMsg(enter.mapId, false, BLOCK_NPC)));
-  return { session, character, enter, npcs, areaName };
+  o.onStep('Tải NPC và quái…');
+  const blocks = BLOCK_NPC | BLOCK_MONSTER_GROUPS | BLOCK_MONSTERS;
+  const world = await readWorldData(await session.request(createWorldDataMsg(enter.mapId, false, blocks)));
+  return { session, character, enter, npcs: world.npcs, groups: world.groups, monsters: world.monsters, areaName };
 }

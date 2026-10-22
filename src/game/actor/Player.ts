@@ -1,8 +1,11 @@
 // com.hz.actor.Player: world movement plus the data the UI screens read (bag, money, stats).
 import type { Mission } from '../core/Mission';
-import type { Skill } from '../core/Skill';
 import type { Talent } from '../core/Talent';
 import type { PlayerBag } from './Item';
+import type { Buffer } from '../core/Buffer';
+import { getBufferBitValue, getBufferType } from '../core/DefineBattle';
+import { Skill } from '../core/Skill';
+import type { Control } from '../main/Control';
 import { Model, TYPE_PLAYER } from './Model';
 import { bagAttr, bagAttrAt, bagEquipPowerValue, getItemSetID, getItemSetNum, idiv, sumValue } from './PlayerStats';
 
@@ -21,6 +24,31 @@ const WEAPON_DAMAGE_POWER: Record<number, [number, number]> = {
 };
 
 /** Model.get(index) attribute ids used by the screens (Model.getValue in Java). */
+type ModField =
+  | 'speed' | 'atk_time' | 'atk_str' | 'atk_agi' | 'atk_magic' | 'def_str' | 'def_agi' | 'def_magic' | 'dodge'
+  | 'hitrate' | 'hitMagic' | 'critical' | 'forceHit' | 'wil' | 'tough' | 'block' | 'brkArmor' | 'insight'
+  | 'def_field' | 'back' | 'magic_back' | 'life_absorption' | 'mana_absorption' | 'magic_penetration'
+  | 'heal_recovery' | 'mana_recovery' | 'keepout_atk_time';
+
+/** Player.addValue: the battle modifier field of an attribute id, with its range. */
+const BATTLE_MODIFIERS: Record<number, [ModField, number, number]> = {
+  31: ['speed', 0, 1000000], 35: ['atk_time', 0, 99], 36: ['atk_str', 0, 1000000], 37: ['atk_agi', 0, 1000000],
+  38: ['atk_magic', 0, 1000000], 39: ['def_str', 0, 1000000], 40: ['def_agi', 0, 1000000], 41: ['def_magic', 0, 1000000],
+  42: ['dodge', 0, 1000000], 43: ['hitrate', 0, 1000000], 44: ['hitMagic', 0, 1000000], 45: ['critical', 0, 1000000],
+  46: ['forceHit', 0, 1000000], 48: ['wil', 0, 1000000], 49: ['tough', 0, 1000000], 51: ['block', 0, 1000000],
+  52: ['brkArmor', 0, 1000000], 53: ['insight', 0, 1000000], 54: ['def_field', -999999, 1000000], 55: ['back', 0, 1000000],
+  56: ['magic_back', 0, 1000000], 57: ['life_absorption', 0, 1000000], 58: ['mana_absorption', 0, 1000000],
+  59: ['magic_penetration', 0, 1000000], 60: ['heal_recovery', -999999, 1000000], 61: ['mana_recovery', -999999, 1000000],
+  250: ['keepout_atk_time', 0, 100],
+};
+
+/** Model tab bits used in battle: revived at 1 HP (status 27), revived (28), delayed death done (29). */
+export const TAB_REBORN_1HP_DONE = 134217728;
+export const TAB_REBORN_DONE = 268435456;
+export const TAB_DIE_DELAY_DONE = 536870912;
+/** Set while a keep-out charge blocks the current hit. */
+export const TAB_KEEPOUT_HIT = 1073741824;
+
 export const ATTR_EXP = 0;
 export const ATTR_EXP_MAX = 1;
 export const ATTR_HP = 2;
@@ -387,6 +415,7 @@ export class Player extends Model {
       case 200: case 201: case 202: case 203: case 204: case 205:
         return this.getPowerValue(0, 0, 168 + (id - 200), 0, 1, 0, 32767);
       case 250: return this.getPowerValue(0, this.keepout_atk_time, 178, 0, 1, 0, 100);
+      case 118: return this.level2;
       default: return undefined;
     }
   }
@@ -395,8 +424,259 @@ export class Player extends Model {
     this.values.set(id, v);
   }
 
+  /**
+   * Player.addValue: HP / MP stay within their maxima; the battle modifiers (ids 31, 35–61, 63,
+   * 250) change their field within its range and readAddValue keeps the change really made, which
+   * a Buffer takes back when it ends. Other ids add to the stored value.
+   */
   addValue(id: number, d: number): void {
+    this.readAddValue = d;
+    switch (id) {
+      case 2:
+      case 3:
+        this.set(id, sumValue(this.get(id), d, 0, this.get(id === 2 ? 29 : 30)));
+        return;
+      case 63:
+        this.argo = sumValue(this.argo, d, -100000, 100000);
+        return;
+      case 91:
+      case 92:
+        this.set(id, sumValue(this.get(id), d, 0, this.get(id === 91 ? 29 : 30)));
+        return;
+      case 118:
+        if (d > 0) this.level2 = sumValue(this.level2, d, 0, 120);
+        return;
+    }
+    const mod = BATTLE_MODIFIERS[id];
+    if (mod) {
+      const [field, min, max] = mod;
+      const old = this[field];
+      this[field] = sumValue(old, d, min, max);
+      this.readAddValue = this[field] - old;
+      return;
+    }
     this.set(id, this.get(id) + d);
+  }
+
+  // ---- Battle state (Player.bStatus, battleBufferList, position…) ----
+
+  /** Battle position 0–33 (Battle.playerList index). */
+  position = 0;
+  /** Bit per battle status (Define.getBufferBitValue); bit 0 (1) = escaped. */
+  bStatus = 0n;
+  battleBufferList: Buffer[] | null = null;
+  /** The change the last addValue really made. */
+  readAddValue = 0;
+  newReflection = 0;
+  /** A monster's attack dialogue shown over it (Player.dialogAIFrame text). */
+  battleMessage: string | null = null;
+
+  /** Player.getAutoSkillCount: the filled auto-battle slots. */
+  getAutoSkillCount(): number {
+    return this.autoSkillID.filter((id) => id > 0).length;
+  }
+
+  isBattleStatus(bits: bigint): boolean {
+    return (bits & this.bStatus) !== 0n;
+  }
+
+  setBattleStatus(bits: bigint): boolean {
+    this.bStatus |= bits;
+    return true;
+  }
+
+  clearBattleStatus(bits: bigint): void {
+    this.bStatus &= ~bits;
+  }
+
+  isDead(): boolean {
+    return this.get(2) <= 0;
+  }
+
+  /** Dead but held up by the delayed-death status (29) that has not fired yet. */
+  isDeadDelay(): boolean {
+    return this.isBattleStatus(getBufferBitValue(29)) && !this.isTabStatus(TAB_DIE_DELAY_DONE);
+  }
+
+  isDeadNoWithDelay(): boolean {
+    return this.isDead() && !this.isDeadDelay();
+  }
+
+  isHaveCanNotReliveBuffer(): boolean {
+    return this.battleBufferList?.some((b) => b.isCannotReliveStatus()) ?? false;
+  }
+
+  /** Player.getbuffer: the last buffer with status `status`. */
+  getbuffer(status: number): Buffer | null {
+    const list = this.battleBufferList;
+    if (list == null) return null;
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].getStatus() !== 0 && list[i].getStatus() === status) return list[i];
+    return null;
+  }
+
+  /** Player.checkBufferSize: at most 3 statuses of one kind; a new death status replaces the old. */
+  private checkBufferSize(b: Buffer): void {
+    if (b.getStatus() === 0) return;
+    const list = this.battleBufferList!;
+    let dropped = 0;
+    let n = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const o = list[i];
+      if (o == null || o.getStatus() === 0) continue;
+      if (b.isDieStatus() && o.isDieStatus()) {
+        this.clearBattleStatus(getBufferBitValue(o.getStatus()));
+        o.destroy(this);
+        list.splice(i, 1);
+      } else if (getBufferType(o.getStatus()) === getBufferType(b.getStatus()) && ++n >= 3) {
+        dropped = o.getStatus();
+        o.destroy(this);
+        list.splice(i, 1);
+        break;
+      }
+    }
+    if (dropped !== 0 && !list.some((o) => o.getStatus() === dropped)) this.clearBattleStatus(getBufferBitValue(dropped));
+  }
+
+  /** Player.addBuffer: a status-clearing buffer goes first; others set their status bit. */
+  addBuffer(b: Buffer | null): void {
+    if (b == null) return;
+    this.battleBufferList ??= [];
+    if (b.isClearStatusBitBuffer()) {
+      this.battleBufferList.unshift(b);
+      return;
+    }
+    const ok = this.setBattleStatus(getBufferBitValue(b.getStatus()));
+    if (!ok) b.clearStatus();
+    else this.checkBufferSize(b);
+    this.battleBufferList.push(b);
+    if (ok) this.setBattleStatus(getBufferBitValue(b.getStatus()));
+  }
+
+  /** Player.clearBufferList: ends the buffers (the no-revive one only when `all`). */
+  clearBufferList(all: boolean): void {
+    const list = this.battleBufferList;
+    if (list == null) return;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = list[i];
+      if (b != null && (all || !b.isCannotReliveStatus())) {
+        b.destroy(this);
+        list.splice(i, 1);
+        this.clearBattleStatus(getBufferBitValue(b.getStatus()));
+      }
+    }
+    if (list.length <= 0) this.battleBufferList = null;
+  }
+
+  /** Player.removeBufferByStatus: ends the buffers of a status (25 / 26: of a kind). */
+  removeBufferByStatus(status: number): void {
+    const list = this.battleBufferList;
+    if (list == null) return;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = list[i];
+      if (b != null && b.isSameStatusType(status)) {
+        b.destroy(this);
+        list.splice(i, 1);
+        this.clearBattleStatus(getBufferBitValue(b.getStatus()));
+      }
+    }
+  }
+
+  /**
+   * Player.runBufferList: `tick` runs each buffer for a round (HP / MP over time; a clearing
+   * buffer finishes the statuses it clears), otherwise the finished ones are removed. Returns the
+   * effect controls of the round.
+   */
+  runBufferList(tick: boolean): Control[] | null {
+    if (this.battleBufferList == null) return null;
+    const out: Control[] = [];
+    const done: Buffer[] = [];
+    for (let i = 0; i < this.battleBufferList.length; i++) {
+      const b = this.battleBufferList[i];
+      if (b == null) continue;
+      if (tick) {
+        b.run(this, out);
+        if (this.battleBufferList == null) return out;
+        if (b.isClearStatusBitBuffer()) {
+          for (let j = i + 1; j < this.battleBufferList.length; j++) {
+            const o = this.battleBufferList[j];
+            if (o != null && o.isSameStatusType(b.getAddValue())) {
+              o.finish();
+              done.push(o);
+            }
+          }
+        }
+      } else if (b.getLastTime() <= 0) {
+        done.push(b);
+      }
+    }
+    if (done.length <= 0) return out;
+    for (const b of done) {
+      b.destroy(this);
+      const k = this.battleBufferList.indexOf(b);
+      if (k >= 0) this.battleBufferList.splice(k, 1);
+      this.clearBattleStatus(getBufferBitValue(b.getStatus()));
+    }
+    for (const b of this.battleBufferList) if (b != null) this.setBattleStatus(getBufferBitValue(b.getStatus()));
+    return out;
+  }
+
+  /** Player.doKeepAtkTime: one blocked hit uses up a keep-out charge. */
+  doKeepAtkTime(): void {
+    this.addValue(250, -1);
+    const list = this.battleBufferList;
+    if (list == null) return;
+    for (let i = list.length - 1; i >= 0; i--) if (list[i]?.useKeeAtkTime()) return;
+  }
+
+  /** Player.resetBattleBuffer: clears statuses, buffers and battle modifiers. */
+  resetBattleBuffer(): void {
+    this.bStatus = 0n;
+    this.battleBufferList = null;
+    this.argo = 0;
+    this.hpMax = 0;
+    this.mpMax = 0;
+    for (const [field] of Object.values(BATTLE_MODIFIERS)) this[field] = 0;
+    this.recovery = 0;
+    this.setTabStatus(false, TAB_REBORN_1HP_DONE);
+    this.setTabStatus(false, TAB_REBORN_DONE);
+    this.setTabStatus(false, TAB_DIE_DELAY_DONE);
+  }
+
+  /** Player.resumeHPMP: full HP and MP. */
+  resumeHPMP(): void {
+    this.set(2, this.get(29));
+    this.set(3, this.get(30));
+  }
+
+  /** Player.checkHPMP: HP / MP no higher than their maxima. */
+  checkHPMP(): void {
+    if (this.get(2) > this.get(29)) this.set(2, this.get(29));
+    if (this.get(3) > this.get(30)) this.set(3, this.get(30));
+  }
+
+  /** Player.getAttackType: the skill's attack type, else the weapon's (get(32)). */
+  getAttackType(s: Skill | null): number {
+    return s != null && s !== Skill.DUMMY ? s.get(1) : this.get(32);
+  }
+
+  /** Player.getAttackRangeAnime: crossbows shoot (anime 1301). */
+  getAttackRangeAnime(): number {
+    const t = this.getEquipWeaponType();
+    return t !== 21 && t !== 22 ? 0 : 1301;
+  }
+
+  /** Player.getAttakAnimePos: 1 = runs up to the target, 0 = attacks from its place. */
+  getAttakAnimePos(): number {
+    const t = this.getEquipWeaponType();
+    return t !== 21 && t !== 22 && t !== 23 && t !== 19 && t !== 34 && t !== 35 && t !== 36 && t !== 39 ? 1 : 0;
+  }
+
+  /** Player.addFightPower / clearFightPower: powers of the fight (formation, team…). */
+  addFightPower(power: number, value: number): void {
+    this.fightPowerList.push([power, value]);
+  }
+  clearFightPower(): void {
+    this.fightPowerList = [];
   }
 
   getLevel(): number {
