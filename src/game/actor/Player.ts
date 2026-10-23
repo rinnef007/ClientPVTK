@@ -44,6 +44,8 @@ const BATTLE_MODIFIERS: Record<number, [ModField, number, number]> = {
   250: ['keepout_atk_time', 0, 100],
 };
 
+const BASE_STAT_FIELDS = ['str', 'con', 'agi', 'ilt', 'wis'] as const;
+
 /** Model tab bits used in battle: revived at 1 HP (status 27), revived (28), delayed death done (29). */
 export const TAB_REBORN_1HP_DONE = 134217728;
 export const TAB_REBORN_DONE = 268435456;
@@ -455,6 +457,18 @@ export class Player extends Model {
       case 118:
         if (d > 0) this.level2 = sumValue(this.level2, d, 0, 120);
         return;
+      case 5001:
+      case 5002:
+        // Model.SET_EXP / SET_EXPMAX: set, not add.
+        this.set(id - 5001, d);
+        return;
+    }
+    if (this.formulas && id >= 6 && id <= 10) {
+      // The base stats (str, con, agi, ilt, wis); HP / MP stay within the new maxima.
+      const f = BASE_STAT_FIELDS[id - 6];
+      this[f] = sumValue(this[f], d, 0, 32767);
+      this.checkHPMP();
+      return;
     }
     const mod = BATTLE_MODIFIERS[id];
     if (mod) {
@@ -493,6 +507,19 @@ export class Player extends Model {
       this.battleMessage = text;
       this.battleMessageCount = 20;
     }
+  }
+
+  /** Player.learnSkill: a skill replaces the one with its id, else is added (at most 20). */
+  learnSkill(s: Skill | null): number {
+    if (s == null) return -1;
+    const i = this.skillList.findIndex((o) => o != null && o.id === s.id);
+    if (i >= 0) {
+      this.skillList[i] = s;
+      return 1;
+    }
+    if (this.skillList.length >= 20) return -3;
+    this.skillList.push(s);
+    return 1;
   }
 
   /** Player.getAutoSkillCount: the filled auto-battle slots. */

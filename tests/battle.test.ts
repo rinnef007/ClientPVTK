@@ -156,3 +156,33 @@ describe('MyPet.get', () => {
     expect(pet.get(29)).toBe(32 + 15 + 100 + 40);
   });
 });
+
+import { readPetReward } from '../src/net/online/BattleMessages';
+
+describe('parsePetReward', () => {
+  it('adds the exp, then a level with grow level, stats and the new exp', () => {
+    const owner = hero();
+    const pet = new MyPet(owner);
+    pet.formulas = true;
+    [pet.str, pet.con, pet.agi, pet.ilt, pet.wis] = [5, 5, 5, 5, 5];
+    pet.set(106, 1);
+    pet.set(1, 100);
+    const r = reply(12502, (w) => {
+      w.putInt(120);
+      w.putByte(1); // levels
+      w.putShort(2); // skill points
+      w.putByte(1); // grow level
+      for (let i = 0; i < 5; i++) w.putShort(1);
+      w.putInt(20);
+      w.putInt(200);
+      w.putByte(3); // cp
+      w.putByte(0); // new skills
+    });
+    const text = readPetReward(r, pet);
+    expect(text).toContain('120');
+    expect(pet.get(106)).toBe(2);
+    expect([pet.str, pet.wis, pet.growLevel]).toEqual([6, 6, 1]);
+    expect([pet.get(0), pet.get(1)]).toEqual([20, 200]);
+    expect(pet.get(2)).toBe(pet.get(29));
+  });
+});

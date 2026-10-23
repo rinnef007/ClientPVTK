@@ -6,6 +6,7 @@ import type { Player } from '../../game/actor/Player';
 import { PlayerBag } from '../../game/actor/Item';
 import { PowerString } from '../../game/string/PowerString';
 import { Message } from '../Message';
+import { readSkill } from './EnterGame';
 import { readAddItems, readNpcStatus, readUpLevel } from './MissionMessages';
 
 export const MSG_ENTER_LOCAL_BATTLE = 12501;
@@ -59,7 +60,39 @@ export interface LocalBattleReward {
   refresh: boolean;
 }
 
-/** MsgHandler.processLocalBattleReward: money, levels, kills (missions), items. Pet rewards and escorts are not ported. */
+/** MsgHandler.parsePetReward: the pet's exp, then levels with grow level, stats, exp and new skills. */
+export function readPetReward(m: Message, pet: Player | null): string {
+  let text = '';
+  const exp = m.getInt();
+  if (exp > 0) text += `${PowerString.makeColorString('Exp trân thú+', 16776960)}${exp}\n`;
+  pet?.addValue(0, exp);
+  const levels = m.getByte();
+  if (levels <= 0) return text;
+  const sp = m.getShort();
+  const grow = m.getByte();
+  if (grow > 0) text += `${PowerString.makeColorString('Cấp trưởng thành trân thú+', 16776960)}${grow}\n`;
+  const stats = grow > 0 ? [m.getShort(), m.getShort(), m.getShort(), m.getShort(), m.getShort()] : [0, 0, 0, 0, 0];
+  const newExp = m.getInt();
+  const newExpMax = m.getInt();
+  const cp = m.getByte();
+  const skills = [];
+  for (let n = m.getByte(); n > 0; n--) skills.push(readSkill(m));
+  if (pet != null) {
+    pet.addValue(106, levels);
+    pet.level += levels;
+    pet.addValue(5, sp);
+    pet.addValue(83, grow);
+    stats.forEach((v, i) => pet.addValue(6 + i, v));
+    pet.addValue(5001, newExp);
+    pet.addValue(5002, newExpMax);
+    (pet as { cp?: number }).cp = cp;
+    for (const s of skills) pet.learnSkill(s);
+    pet.resumeHPMP();
+  }
+  return text;
+}
+
+/** MsgHandler.processLocalBattleReward: money, levels, kills (missions), items. Escort rewards are not ported. */
 export function readLocalBattleReward(m: Message, p: Player): LocalBattleReward {
   const status = m.getByte();
   if (status < 0) throw new Error(m.getString());
@@ -73,7 +106,7 @@ export function readLocalBattleReward(m: Message, p: Player): LocalBattleReward 
     }
     text += readUpLevel(m, p);
     const bagFull = m.getBoolean();
-    if (m.getBoolean()) throw new Error('parsePetReward chưa được port');
+    if (m.getBoolean()) text += readPetReward(m, p.getPet());
     const n = m.getByte();
     if (n > 0) {
       const ids: number[] = [];
