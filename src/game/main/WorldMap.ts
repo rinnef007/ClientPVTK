@@ -10,12 +10,29 @@ import { getOffsetValue, rectIn } from '../common/Tool';
 import { drawGameImage, readPNGFile } from '../common/Utilities';
 import { isMotion } from '../gui/GWidget';
 import type { Image } from '../image/Image';
-import { UIHandler, alertMessage, type UIListener } from '../ui/UIHandler';
+import { UIHandler, alertMessage, preloadUI, type UIListener } from '../ui/UIHandler';
+import { GContainer, GLabel, GTextArea, GWindow, type GWidget } from '../gui/GWidget';
+import * as GameWorld from './GameWorld';
+import { online } from '../../net/online/Online';
+import {
+  createWorldMapEnterMsg, createWorldMapListMsg, createWorldMapMsg, readWorldMap, readWorldMapEnter, readWorldMapList,
+  type WorldMapEntry,
+} from '../../net/online/WorldMapMessages';
 import { STR_NEED_SERVER, registerScreen } from '../ui/UIAction';
 import { getImageSet } from './GameView';
 import * as WorldMessage from './WorldMessage';
 
 export const TYPE_WORLD_MAP_PANEL = 110;
+export const TYPE_WORLD_MAP_LIST = 109;
+const TYPE_AREA_MESSAGE = 15;
+const EVENT_WORLD_MAP_WINDOW = 10902;
+const EVENT_WORLD_MAP_LIB = 10903;
+const EVENT_WORLD_MAP_INFO = 10904;
+const EVENT_WORLD_MAP_NAME = 10905;
+const EVENT_WORLD_MAP_TITLE = 10906;
+const STR_BACK = 'Trở về'; // GameText 4
+/** GameText.TI_ENTER (157): its text is not in the decompile; "Vào" is the web port's guess. */
+const STR_ENTER = 'Vào';
 export const WORLD_MAP_FILES = ['common/wm.png'];
 const DRAG_MIN_DISTANCE = 30;
 const SCREEN_W = 320;
@@ -88,9 +105,20 @@ export class WorldMap implements UIListener {
     return WorldMap.worldMap != null;
   }
 
-  /** WorldMap.doEnterWorldMap: the server sends the regions; offline the demo list. */
-  static doEnterWorldMap(): void {
-    WorldMap.worldMap = new WorldMap(DEMO_REGIONS.map(([name, x, y], i) => ({ id: i + 1, x, y, name, status: 0 })));
+  /** WorldMap.doEnterWorldMap: the server sends the regions (10521); offline the demo list. */
+  static async doEnterWorldMap(): Promise<void> {
+    const s = online.session;
+    if (s == null) {
+      WorldMap.worldMap = new WorldMap(DEMO_REGIONS.map(([name, x, y], i) => ({ id: i + 1, x, y, name, status: 0 })));
+      return;
+    }
+    try {
+      const regions = readWorldMap(await s.request(createWorldMapMsg()));
+      await preloadUI(TYPE_WORLD_MAP_LIST, TYPE_AREA_MESSAGE);
+      WorldMap.worldMap = new WorldMap(regions);
+    } catch (e) {
+      alertMessage(e instanceof Error ? e.message : String(e));
+    }
   }
 
   static clean(): void {
@@ -141,10 +169,111 @@ export class WorldMap implements UIListener {
     if (this.curSelectMap) this.updateCamera(this.curSelectMap.x, this.curSelectMap.y, tap);
   }
 
-  /** doGetMapList: the region's maps come from the server (createWorldMapListMsg). */
+  /** doGetMapList: the region's maps from the server (10522) in ui/109. */
   private doGetMapList(): void {
-    if (this.curSelectMap == null) return;
-    alertMessage(STR_NEED_SERVER, this.curSelectMap.name);
+    const region = this.curSelectMap;
+    if (region == null) return;
+    const s = online.session;
+    if (s == null) {
+      alertMessage(STR_NEED_SERVER, region.name);
+      return;
+    }
+    void s.request(createWorldMapListMsg(region.id)).then(
+      (r) => this.createMapListUI(region.name, readWorldMapList(r)),
+      (e) => alertMessage(e instanceof Error ? e.message : String(e)),
+    );
+  }
+
+  /** createMapListUI / updateMapListUI: the title, then a row (library 10903) per map. */
+  private createMapListUI(title: string, list: WorldMapEntry[]): void {
+    const ui = UIHandler.createUIFromXML(TYPE_WORLD_MAP_LIST);
+    ui.listener = this;
+    const label = ui.getGWidgetByEventType(EVENT_WORLD_MAP_TITLE);
+    if (label instanceof GLabel) label.setText(title);
+    const win = ui.getGWidgetByEventType(EVENT_WORLD_MAP_WINDOW);
+    const tpl = ui.gwidetLib.find((w) => w.getEventType() === EVENT_WORLD_MAP_LIB) ?? ui.getGWidgetByEventType(EVENT_WORLD_MAP_LIB);
+    if (win instanceof GWindow && tpl instanceof GContainer) {
+      for (const o of list) {
+        const row = tpl.getClone();
+        const name = row instanceof GContainer ? row.getJavaChildByEvent(EVENT_WORLD_MAP_NAME) : null;
+        if (name instanceof GLabel) {
+          name.setText(o.name);
+          if (o.status === 1) name.setIconValue(this.haveEventSign, 1024);
+        }
+        row.setObj(o);
+        win.add(row);
+      }
+      if (win.focusWidget == null) win.setFirstFocus();
+    }
+    ui.show();
+    UIHandler.addUI(ui);
+  }
+
+  /** processMapList: a row (10903) or its info (10904) shows the map's description. */
+  private processMapList(ui: UIHandler, action: number): void {
+    if (action !== 0) return;
+    const win = ui.getGWidgetByEventType(EVENT_WORLD_MAP_WINDOW);
+    if (!(win instanceof GWindow)) return;
+    const w = ui.getActionGWidget();
+    let row: GWidget | null = w;
+    while (row != null && row.parent !== win) row = row.parent;
+    const o = (row ?? win.focusWidget)?.getObj() as WorldMapEntry | null;
+    const ev = w?.getEventType();
+    if (o == null || (ev !== EVENT_WORLD_MAP_LIB && ev !== EVENT_WORLD_MAP_INFO)) return;
+    this.doViewMapData(ui, o);
+  }
+
+  /** doViewMapData: the description (and the teleport stone notice), "Trở về" / enter (ui/15). */
+  private doViewMapData(parent: UIHandler, o: WorldMapEntry): void {
+    let text = o.desc;
+    if (o.needStone === 1) text += '\n/cFFFF00(Cần đá dịch chuyển)/p';
+    const ui = UIHandler.createUIFromXML(TYPE_AREA_MESSAGE);
+    ui.listener = this;
+    ui.parent = parent;
+    const win = ui.getGWindowByEventType(2);
+    const tpl = ui.gwidetLib.find((x) => x.getEventType() === 3) ?? null;
+    if (win != null && tpl != null) {
+      win.setObj(o);
+      for (const t of [STR_BACK, STR_ENTER]) {
+        const b = tpl.getClone();
+        if (b instanceof GLabel) b.setText(t);
+        win.add(b);
+      }
+      win.setFirstFocus();
+    }
+    const area = ui.getGWidgetByEventType(1);
+    if (area instanceof GTextArea) area.setText(text);
+    ui.show();
+    UIHandler.addUI(ui);
+  }
+
+  /** processInfoList: "Vào" enters the map (doJumpMap). */
+  private processInfoList(ui: UIHandler, action: number): void {
+    if (action !== 0) return;
+    const win = ui.getGWindowByEventType(2);
+    const w = ui.getActionGWidget();
+    const label = w != null && w.parent === win ? w : win?.focusWidget;
+    const o = win?.getObj() as WorldMapEntry | null;
+    if (!(label instanceof GLabel) || o == null) return;
+    ui.close();
+    if (label.getText() === STR_ENTER) this.doJumpMap(o);
+  }
+
+  /**
+   * WorldMap.doJumpMap: 10523; a used teleport stone leaves the bag, then the blocks build the new
+   * map (the scene's map change, which also leaves the world map).
+   */
+  private doJumpMap(o: WorldMapEntry): void {
+    const s = online.session;
+    if (s == null) return;
+    GameWorld.changeMapWith(async () => {
+      const r = readWorldMapEnter(await s.request(createWorldMapEnterMsg(o.id)));
+      const bag = GameWorld.myPlayer?.bag;
+      if (r.usedItem != null && bag != null) bag.removeBagItemByPos(r.usedItem.slot, 1);
+      WorldMap.clean();
+      WorldMap.onExit();
+      return r.blocks;
+    });
   }
 
   private updateCamera(x: number, y: number, now: boolean): void {
@@ -222,8 +351,10 @@ export class WorldMap implements UIListener {
     }
   }
 
-  processLayerAction(_ui: UIHandler, _action: number): void {
-    // processMapPanel is empty in Java; the map list (109) and enter dialog (15) need the server.
+  /** The map list (109), the enter dialog (15); processMapPanel (110) is empty in Java. */
+  processLayerAction(ui: UIHandler, action: number): void {
+    if (ui.getType() === TYPE_AREA_MESSAGE) this.processInfoList(ui, action);
+    else if (ui.getType() === TYPE_WORLD_MAP_LIST) this.processMapList(ui, action);
   }
 
   processLayerClose(ui: UIHandler): void {
@@ -234,5 +365,5 @@ export class WorldMap implements UIListener {
 /** HUD "Map" (11281): WorldMap.doEnterWorldMap. */
 registerScreen('worldMap', {
   uiTypes: [TYPE_WORLD_MAP_PANEL],
-  open: () => WorldMap.doEnterWorldMap(),
+  open: () => void WorldMap.doEnterWorldMap(),
 });

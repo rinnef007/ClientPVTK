@@ -1,11 +1,13 @@
 // Map change messages of client 1.2.0 (jadx decompile): 10506 jumps to another map
 // (MsgHandler.createJumpMapMessage / processJumpMapMsg, sent by GameWorld.doJumpMap through stage 12)
-// and 10536 fetches map images listed in data block 8192 (processDataMapImageMsg).
+// 10510 enters a city (City.doEnterCity / processJumpCityMsg) and 10536 fetches map images listed in
+// data block 8192 (processDataMapImageMsg).
 import { Message } from '../Message';
 import { BLOCK_PLAYERS, readDataBlocks, type EnterGameData } from './EnterGame';
 
 export const MSG_GO_MAP = 10506;
 export const MSG_MAP_IMAGE = 10536;
+export const MSG_JUMP_CITY = 10510;
 
 export type MapBlocks = Omit<EnterGameData, 'loginSetting'>;
 
@@ -24,6 +26,17 @@ export function readJumpMap(m: Message): MapBlocks {
   if (m.getByte() !== 0) throw new Error(m.getString());
   return readDataBlocks(m);
 }
+
+/** createJumpCityMessage: a city by its master's id, and the blocks wanted (City.doEnterCity asks for 64). */
+export function createJumpCityMsg(masterId: number, flags = BLOCK_PLAYERS): Message {
+  const m = new Message(MSG_JUMP_CITY);
+  m.putInt(masterId);
+  m.putInt(flags);
+  return m;
+}
+
+/** processJumpCityMsg: a non-zero status is refused with its text; else processDataBlockFlagMsg. */
+export const readJumpCity = readJumpMap;
 
 export function createMapImageMsg(id: number): Message {
   const m = new Message(MSG_MAP_IMAGE);

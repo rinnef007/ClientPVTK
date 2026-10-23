@@ -6,6 +6,7 @@ import type { Player } from '../actor/Player';
 import { GameMap } from '../map/GameMap';
 import { PlayerLayer } from '../map/PlayerLayer';
 import { drawModelRow } from './MapModels';
+import type { MapBlocks } from '../../net/online/MapMessages';
 
 export let gameMap: GameMap | null = null;
 export let myPlayer: Player | null = null;
@@ -84,6 +85,20 @@ export function setDoNpc(fn: (npc: NPC) => boolean): void {
 let mapJumper: ((mapId: number, gx: number, gy: number) => void) | null = null;
 export function setMapJumper(fn: ((mapId: number, gx: number, gy: number) => void) | null): void {
   mapJumper = fn;
+}
+
+/**
+ * A map change by another request (WorldMap.doJumpMap's 10523): the scene sends it and builds the
+ * new map from the blocks `fetch` returns.
+ */
+let mapChanger: ((fetch: () => Promise<MapBlocks>) => void) | null = null;
+export function setMapChanger(fn: ((fetch: () => Promise<MapBlocks>) => void) | null): void {
+  mapChanger = fn;
+}
+export function changeMapWith(fetch: () => Promise<MapBlocks>): boolean {
+  if (mapChanger == null) return false;
+  mapChanger(fetch);
+  return true;
 }
 
 /**

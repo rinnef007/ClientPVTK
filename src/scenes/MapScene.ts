@@ -206,6 +206,7 @@ export class MapScene implements Scene {
     setOnQuitGame(() => this.leave());
     GameWorld.setBattleStarter((id) => this.startBattle(id, online, me));
     GameWorld.setMapJumper((id, gx, gy) => void this.jumpMap(online, me, id, gx, gy));
+    GameWorld.setMapChanger((fetch) => void this.changeMap(online, me, fetch));
     GameWorld.setAlertHook((text) => alertMessage(text));
     Player.hasUI = () => UIHandler.hasUI();
     WorldPanel.setAskCancelAutoMove((yes) =>
@@ -261,7 +262,12 @@ export class MapScene implements Scene {
    * Define.NEW_SCENE_DATA_FLAG, the listed map images are fetched and the new map is shown. A refusal
    * goes to the system chat and the player stays where they are.
    */
-  private async jumpMap(online: OnlineWorld, me: Player, mapId: number, gx: number, gy: number): Promise<void> {
+  private jumpMap(online: OnlineWorld, me: Player, mapId: number, gx: number, gy: number): Promise<void> {
+    return this.changeMap(online, me, async () => readJumpMap(await online.session.request(createJumpMapMsg(mapId, gx, gy))));
+  }
+
+  /** The map change shared by 10506 and the world map's 10523: `fetch` sends the request and reads the blocks. */
+  private async changeMap(online: OnlineWorld, me: Player, fetch: () => Promise<MapBlocks>): Promise<void> {
     if (this.jumping) return;
     this.jumping = true;
     UIHandler.closeAllUI();
@@ -273,7 +279,7 @@ export class MapScene implements Scene {
     try {
       let d: MapBlocks;
       try {
-        d = readJumpMap(await online.session.request(createJumpMapMsg(mapId, gx, gy)));
+        d = await fetch();
       } catch (e) {
         // processJumpMapMsg: the refusal goes to the system chat and path finding stops.
         this.map = oldMap;
@@ -587,6 +593,7 @@ export class MapScene implements Scene {
   private leave(): void {
     GameWorld.setBattleStarter(null);
     GameWorld.setMapJumper(null);
+    GameWorld.setMapChanger(null);
     this.online?.session.net.close();
     onlineState.session = null;
     onlineState.moveSync = null;
