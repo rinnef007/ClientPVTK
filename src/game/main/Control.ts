@@ -240,11 +240,12 @@ export class Control {
     return true;
   }
 
-  /** Type 1 = NPC, 3 = player model, 4 = that player's pet; mercenaries (5) are not ported. */
-  private getMoveModel(id: number, _subId: number, modelType: number): Model | null {
+  /** Type 1 = NPC, 3 = player model, 4 = that player's pet, 5 = its mercenary of group `subId`. */
+  private getMoveModel(id: number, subId: number, modelType: number): Model | null {
     if (modelType === 1) return GameWorld.getNpcByID(id);
     if (modelType === 3) return GameWorld.getModel(id);
     if (modelType === 4) return GameWorld.getModel(id)?.getPet() ?? null;
+    if (modelType === 5) return GameWorld.getModel(id)?.getMercenaryById(subId) ?? null;
     return null;
   }
 
@@ -265,4 +266,4 @@ export class Control {
   }
 }
 
-Model.createPixelMove = (id, dx, dy, type) => Control.createPixelMove(id, dx, dy, type);
+Model.createPixelMove = (id, dx, dy, type, subId) => Control.createPixelMove(id, dx, dy, type, subId);

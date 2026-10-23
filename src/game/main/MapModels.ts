@@ -2,10 +2,11 @@
 // players (filtered by the "Người chơi" setting, at most 20, team mates always), then the NPCs,
 // then the player; drawPlayerModel puts a player's pet behind or in front of it by y;
 // drawModel puts names over other players (per the "Tên" setting), names and quest signs over
-// NPCs, and the stall / fight icons. Not ported: mercenaries (getMerList), riding pets (tab 256),
+// NPCs, and the stall / fight icons; mercenaries (getMerList) are drawn first, without names.
+// Not ported: riding pets (tab 256),
 // NPC welcome bubbles and the hide-players NPCs (NPC.isPlayerSHow is always true).
 import type { Graphics } from '../../midp/Graphics';
-import type { Model } from '../actor/Model';
+import { TYPE_MERCENARY, type Model } from '../actor/Model';
 import { NPC, TAB_LOAD_FROM_SERVER } from '../actor/NPC';
 import type { Player } from '../actor/Player';
 import { readPNGFile, drawGameImage } from '../common/Utilities';
@@ -107,6 +108,7 @@ export function drawModel(g: Graphics, ox: number, oy: number, m: Model, isMe: b
   }
   if (m.isTabStatus(TAB_HIDDEN) || sp == null) return;
   sp.draw(g, x, y);
+  if (m.getType() === TYPE_MERCENARY) return;
   const h = sp.getHeight();
   drawModelName(g, m, x, y - h, isMe, me);
   drawModelIcon(g, m, x, y - h, h, sp.getRotate());
@@ -114,6 +116,7 @@ export function drawModel(g: Graphics, ox: number, oy: number, m: Model, isMe: b
 
 /** PlayerLayer.drawPlayerModel: the pet first when it stands higher on screen than its owner. */
 function drawPlayerModel(g: Graphics, ox: number, oy: number, m: Model, isMe: boolean, me: Player | null): void {
+  for (const merc of m.merList) drawModel(g, ox, oy, merc, isMe, me);
   const pet = m.getPet();
   if (pet != null && !m.isTabStatus(256)) {
     if (pet.py > m.py) {

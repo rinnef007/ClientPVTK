@@ -11,8 +11,8 @@ import { Mission } from '../core/Mission';
 import { GameMap } from '../map/GameMap';
 import { GameSprite, preloadSprite, resolveSprite } from '../sprite/GameSprite';
 import { createPetSpriteByIcon, createSpriteByIcon } from '../sprite/SpriteIcon';
-import { TYPE_PET, type Model } from '../actor/Model';
-import type { OtherPlayerData } from '../../net/online/OtherPlayers';
+import { TYPE_MERCENARY, TYPE_PET, type Model } from '../actor/Model';
+import type { MercenaryLook, OtherPlayerData } from '../../net/online/OtherPlayers';
 import type { EnterGameData, PetDetail, PlayerDetail } from '../../net/online/EnterGame';
 import { MyPet } from '../actor/MyPet';
 import { gunzip, type NpcData } from '../../net/online/WorldData';
@@ -154,7 +154,29 @@ export function buildOtherPlayer(d: OtherPlayerData): { model: Player; ready: Pr
     p.setPet(pet);
     p.initFollowPos();
   }
+  // Model.addMercenary: each mercenary starts on its owner (its own pet is read but not drawn,
+  // as in PlayerLayer.drawPlayerModel).
+  const mercs: [Player, MercenaryLook][] = [];
+  for (const e of d.mercenaries) {
+    if (e.look == null) continue;
+    const m = new Player(TYPE_MERCENARY);
+    m.id = e.look.id;
+    m.groupId = e.groupId;
+    m.px = p.px;
+    m.py = p.py;
+    m.follower = p;
+    p.merList.push(m);
+    mercs.push([m, e.look]);
+  }
   const ready = (async () => {
+    for (const [m, look] of mercs) {
+      // Model.createSprite for type 5: Model.createPlayerSprite from the three icons.
+      const ms = await resolveSprite(() => createSpriteByIcon(look.icon1, look.icon2, look.icon3, false));
+      if (ms != null) {
+        m.setPlayerSprite(ms);
+        m.setAnimationByDir(false);
+      }
+    }
     const s = await resolveSprite(() => createSpriteByIcon(d.icon1, d.icon2, d.icon3, false));
     if (s != null) {
       p.setPlayerSprite(s);

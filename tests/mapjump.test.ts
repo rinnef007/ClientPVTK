@@ -225,3 +225,50 @@ describe('NPC.isNeedLoadFromServer', () => {
     expect(n.isTabStatus(65536)).toBe(true);
   });
 });
+
+describe('mercenaries of other players', () => {
+  it('block 64 mercenaries start on their owner and follow it', async () => {
+    const { buildOtherPlayer } = await import('../src/game/main/OnlineWorld');
+    const { readOtherPlayer } = await import('../src/net/online/OtherPlayers');
+    const w = new Message(64, 512);
+    for (let i = 0; i < 4; i++) w.putByte(0);
+    w.putInt(77);
+    w.putString('Khách');
+    w.putString('');
+    w.putString('');
+    w.putByte(10);
+    w.putByte(0);
+    w.putLong(1n);
+    w.putLong(2n);
+    w.putLong(3n);
+    w.putInt(0);
+    w.putInt(0);
+    w.putByte(0);
+    w.putInt(-1);
+    w.putByte(6);
+    w.putByte(14);
+    w.putByte(0);
+    w.putByte(-1); // no pet
+    w.putByte(1); // one mercenary: group 9, look, no pet
+    w.putShort(9);
+    w.putInt(500);
+    w.putLong(4n);
+    w.putLong(5n);
+    w.putLong(6n);
+    w.putInt(-1);
+    w.putString('');
+    w.putInt(0);
+    w.putShort(0);
+    const d = readOtherPlayer(new Message(64, w.payload()));
+    expect(d.mercenaries).toEqual([{ groupId: 9, look: { id: 500, icon1: 4n, icon2: 5n, icon3: 6n }, pet: null }]);
+    const { model, ready } = buildOtherPlayer(d);
+    await ready;
+    GameWorld.addModel(model);
+    const merc = model.getMercenaryById(9)!;
+    expect([merc.getGx(), merc.getGy(), merc.getType()]).toEqual([6, 14, 5]);
+    model.setPosition(10, 14);
+    merc.logic(); // queues a step towards the owner
+    merc.logic(); // takes it
+    expect(merc.getPx()).toBeGreaterThan(6 * 24);
+  });
+});

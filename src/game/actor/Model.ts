@@ -21,6 +21,8 @@ export const TYPE_NPC = 1;
 export const TYPE_PLAYER = 3;
 /** MyPet (Model.setType(4)). */
 export const TYPE_PET = 4;
+/** Model type 5: a mercenary (Mercenary), drawn with its owner. */
+export const TYPE_MERCENARY = 5;
 
 /** Tab status bit set when a move finished; the next idle tick switches back to standing. */
 export const TAB_MOVE_END = 1;
@@ -162,10 +164,24 @@ export class Model implements MapModel {
     this.excuteControlList(this.controlList);
   }
 
-  /** Model.logicPlayer: the model, then its pet (mercenaries are not ported). */
+  /**
+   * Model.merList: the mercenaries walking with this player. Java moves them as team members (the
+   * leader's last moves); here each follows its owner like a pet (Model.follower), an approximation.
+   */
+  merList: Model[] = [];
+  /** Mercenary.groupId: how the owner finds this mercenary (Model.getMercenaryById). */
+  groupId = 0;
+
+  /** Model.getMercenaryById. */
+  getMercenaryById(groupId: number): Model | null {
+    return this.merList.find((m) => m.groupId === groupId) ?? null;
+  }
+
+  /** Model.logicPlayer: the model, its pet, then its mercenaries. */
   logicPlayer(): void {
     this.logic();
     this.getPet()?.logic();
+    for (const m of this.merList) m.logic();
   }
 
   /**
@@ -173,7 +189,7 @@ export class Model implements MapModel {
    * would make an import cycle through NPC, which extends Model).
    */
   static speedOf: (m: Model) => number = () => 6;
-  static createPixelMove: (followerId: number, dx: number, dy: number, type: number) => Control | null = () => null;
+  static createPixelMove: (followerId: number, dx: number, dy: number, type: number, subId: number) => Control | null = () => null;
 
   /** The model this one follows (set on a pet by its owner's setPet). */
   follower: Model | null = null;
@@ -207,7 +223,7 @@ export class Model implements MapModel {
       if (ay > ax) my = dy > 0 ? speed : -speed;
       else mx = dx > 0 ? speed : -speed;
     }
-    const c = Model.createPixelMove(f.getId(), mx, my, this.getType());
+    const c = Model.createPixelMove(f.getId(), mx, my, this.getType(), this.groupId);
     if (c == null) return false;
     this.controlList.push(c);
     return true;
