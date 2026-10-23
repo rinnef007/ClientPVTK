@@ -21,6 +21,8 @@ import { PowerString } from '../../string/PowerString';
 import { SURE_YES, waitForTwiceSureUI } from './twiceSure';
 import { doBrowseShop } from './shop';
 import { online } from '../../../net/online/Online';
+import { createAutoMoveMissionMsg } from '../../../net/online/AutoMoveMessages';
+import { doAutoMoveRequest } from '../../main/AutoMove';
 import type { Message } from '../../../net/Message';
 import {
   MSG_MISSION_ABANDON, MSG_MISSION_ACCEPT, MSG_MISSION_DELIVER, checkStatus, createGetMissionDataMsg,
@@ -375,8 +377,13 @@ function doMenuButton(ui: UIHandler, o: MissionUIObj, ev: number): boolean {
     doMissionInfoView(p, m, npc, SUB_FINISH_DIALOG, ui.parent);
     return true;
   }
+  if (ev === EVENT_FIND_PATH && online.session && p != null) {
+    // Mission.doMissionAutoPathMsg (the city mission shortcut of the mission list is not ported).
+    void doAutoMoveRequest(p, createAutoMoveMissionMsg(m.getId()));
+    return false;
+  }
   if (m.isRandomMission() || ev === EVENT_FIND_PATH) {
-    alertMessage(STR_NEED_SERVER); // RandomMission / doMissionAutoPathMsg
+    alertMessage(STR_NEED_SERVER); // RandomMission / path finding offline
     return false;
   }
   if (ev === EVENT_GIVE_UP) {

@@ -327,6 +327,11 @@ export function checkNpc(p: Player, x: number, y: number, pointer: boolean): boo
 export function handleKey(pressingKey: number, pointer: [number, number] | null): void {
   const p = GameWorld.myPlayer;
   if (p == null) return;
+  // WorldPanel.handleKey / pointer: a key or a tap during path finding asks to give it up.
+  if (p.isAutoMove()) {
+    if (pressingKey > 0 || (pointer != null && pointer[0] !== -1)) askCancelAutoMove(p);
+    return;
+  }
   const speed = GameWorld.getSpeed(p);
   if (pointer) handleWorldPointer(p, pointer[0], pointer[1], speed);
   if (!p.isControlListEmpty()) return;
@@ -342,6 +347,18 @@ export function handleKey(pressingKey: number, pointer: [number, number] | null)
   let mv = queued;
   if (queued === 0) mv = correctMoveDis(p.getPx(), p.getPy(), getMoveXByDir(dir, speed), getMoveYByDir(dir, speed), speed);
   if (mv !== 0) handleMoveKey(p, keyX(mv), keyY(mv));
+}
+
+/**
+ * WorldPanel.doAskCancelAutoMove: "Hủy tìm đường" / "Có hủy tìm đường không? " (the UI installs
+ * the yes/no box; without one the walk is given up at once).
+ */
+let askCancel: (yes: () => void) => void = (yes) => yes();
+export function setAskCancelAutoMove(fn: (yes: () => void) => void): void {
+  askCancel = fn;
+}
+function askCancelAutoMove(p: Player): void {
+  askCancel(() => p.clearAutoMoveList());
 }
 
 export function handleMoveKey(p: Player, dx: number, dy: number): void {

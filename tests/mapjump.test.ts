@@ -215,3 +215,13 @@ describe('Mission.checkPlayerMissionStatus', () => {
     expect(Mission.checkPlayerMissionStatus(p, 5, 8)).toBe(false);
   });
 });
+
+describe('NPC.isNeedLoadFromServer', () => {
+  it('only server sprites (≥ 4000) without a sprite wait for the default image', () => {
+    const n = new NPC();
+    expect(n.isNeedLoadFromServer(108)).toBe(false);
+    expect(n.isTabStatus(65536)).toBe(false);
+    expect(n.isNeedLoadFromServer(4001)).toBe(true);
+    expect(n.isTabStatus(65536)).toBe(true);
+  });
+});

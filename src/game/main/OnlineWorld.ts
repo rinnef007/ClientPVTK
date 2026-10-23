@@ -126,6 +126,9 @@ export async function buildOnlineNpcs(list: NpcData[]): Promise<NPC[]> {
     n.setEnable((d.status & 2) !== 0);
     n.setDir(d.dir);
     if (d.icon1 > 0) n.setPlayerSprite(GameSprite.createSprite(d.icon1));
+    // FragmentData.doMapSpriteRequest: server sprites would be downloaded (not ported; the user's
+    // backend has none), so such NPCs keep the default image.
+    n.isNeedLoadFromServer(d.icon1);
     n.setAnimationByDir(false);
     return n;
   });

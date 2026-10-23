@@ -30,6 +30,9 @@ export interface NpcMenu {
   reqMissionState: number;
 }
 
+/** NPC tab status 65536: waiting for its sprite from the server (the default image is drawn). */
+export const TAB_LOAD_FROM_SERVER = 65536;
+
 export class NPC extends Model {
   npcType = 0;
   /**
@@ -96,6 +99,17 @@ export class NPC extends Model {
   }
   isEnable(): boolean {
     return this.enable;
+  }
+
+  /**
+   * NPC.isNeedLoadFromServer: a server sprite (FragmentData.isServerSpr, id ≥ 4000) not loaded yet
+   * marks the NPC with tab 65536, which draws the default NPC image meanwhile. (Java also skips
+   * hidden NPCs with mission data; that data is not kept here.)
+   */
+  isNeedLoadFromServer(icon: number): boolean {
+    if (icon < 4000 || this.getPlayerSprite() != null) return false;
+    this.setTabStatus(true, TAB_LOAD_FROM_SERVER);
+    return true;
   }
 
   /** NPC.isInJumpMapArea: (gx, gy) inside the spawn cell ± range (jump areas, type 8). */

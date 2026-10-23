@@ -1,4 +1,4 @@
-import { LEFT, TOP } from '../midp/anchor';
+import { HCENTER, LEFT, TOP } from '../midp/anchor';
 import { FONT_MEDIUM, FONT_SMALL, type Graphics } from '../midp/Graphics';
 import { KEY_FIRE, KEY_NUM0, KEY_POUND, KEY_SOFT_LEFT, KEY_SOFT_RIGHT, KEY_STAR, type InputState } from '../midp/Input';
 import { NPC, NPC_TYPE_SHOP } from '../game/actor/NPC';
@@ -40,7 +40,7 @@ import { online as onlineState } from '../net/online/Online';
 import { DEMO_SHOP_ID, fillDemoPlayer, makeDemoNpcMissions, makeDemoShopGoods } from '../game/demo/DemoData';
 import { setDemoShop } from '../game/main/ShopServer';
 import { TYPE_SHOP_ITEM } from '../game/ui/screens/shop';
-import { TYPE_TWICE_SURE } from '../game/ui/screens/twiceSure';
+import { SURE_YES, TYPE_TWICE_SURE, waitForTwiceSureUI } from '../game/ui/screens/twiceSure';
 import { simRefreshNpcSigns } from '../game/main/MissionServer';
 import { TYPE_MISSION, doNpc, setOnMissionReward } from '../game/ui/screens/mission';
 import { ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_HP_MAX, ATTR_MP, ATTR_MP_MAX } from '../game/actor/Player';
@@ -207,6 +207,9 @@ export class MapScene implements Scene {
     GameWorld.setBattleStarter((id) => this.startBattle(id, online, me));
     GameWorld.setMapJumper((id, gx, gy) => void this.jumpMap(online, me, id, gx, gy));
     GameWorld.setAlertHook((text) => alertMessage(text));
+    Player.hasUI = () => UIHandler.hasUI();
+    WorldPanel.setAskCancelAutoMove((yes) =>
+      waitForTwiceSureUI('Hủy tìm đường', 'Có hủy tìm đường không? ', (r) => r === SURE_YES && yes(), 17));
     setOnBagChanged((p) => this.onBagChanged(p));
     this.others = [];
   }
@@ -272,8 +275,10 @@ export class MapScene implements Scene {
       try {
         d = readJumpMap(await online.session.request(createJumpMapMsg(mapId, gx, gy)));
       } catch (e) {
+        // processJumpMapMsg: the refusal goes to the system chat and path finding stops.
         this.map = oldMap;
         WorldMessage.addSystemChat(e instanceof Error ? e.message : String(e));
+        me.clearAutoMoveList();
         return;
       }
       me.setPosition(d.gx, d.gy);
@@ -626,6 +631,12 @@ export class MapScene implements Scene {
       g.setFontSize(FONT_MEDIUM);
       hud.root.paint(g);
       g.setClip(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+      // GameCanvas world paint: "Tự dò đường..." while walking a found path (GameText.STR_IN_AUTO_RUN).
+      if (me.isAutoMove() && !UIHandler.hasUI()) {
+        g.setFontSize(FONT_MEDIUM);
+        g.setColor(16776960);
+        g.drawString('Tự dò đường...', SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, HCENTER | TOP);
+      }
       // GameCanvas.paint: world (with HUD), bottom chat, dialogs, then notices/prompts on top.
       WorldMessage.paintBottomUIMsg(g);
       g.setFontSize(FONT_MEDIUM);

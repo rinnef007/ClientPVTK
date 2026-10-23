@@ -154,6 +154,9 @@ export class Model implements MapModel {
     return true;
   }
 
+  /** Model.clearAutoMoveList: only the player walks a found path (Player overrides). */
+  clearAutoMoveList(): void {}
+
   logic(): void {
     this.playerSprite?.action();
     this.excuteControlList(this.controlList);

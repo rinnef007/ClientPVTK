@@ -3,11 +3,10 @@
 // then the player; drawPlayerModel puts a player's pet behind or in front of it by y;
 // drawModel puts names over other players (per the "Tên" setting), names and quest signs over
 // NPCs, and the stall / fight icons. Not ported: mercenaries (getMerList), riding pets (tab 256),
-// NPC welcome bubbles, the hide-players NPCs
-// (NPC.isPlayerSHow is always true) and the default NPC image for sprite-less NPCs.
+// NPC welcome bubbles and the hide-players NPCs (NPC.isPlayerSHow is always true).
 import type { Graphics } from '../../midp/Graphics';
 import type { Model } from '../actor/Model';
-import { NPC } from '../actor/NPC';
+import { NPC, TAB_LOAD_FROM_SERVER } from '../actor/NPC';
 import type { Player } from '../actor/Player';
 import { readPNGFile, drawGameImage } from '../common/Utilities';
 import { isMotion } from '../gui/GWidget';
@@ -25,8 +24,9 @@ const NPC_TYPE_JUMP = 1;
 
 let fightImg: Image | null | undefined;
 let stallImg: Image | null | undefined;
-/** GameView.fightImg / stallImg (/common/f.png, /common/9.png). */
-export const MAP_MODEL_IMAGES = ['common/f.png', 'common/9.png', 'common/11.fr', 'common/11.png'];
+let defaultNpcImg: Image | null | undefined;
+/** GameView.fightImg / stallImg / defaultNpcImg (/common/f.png, /common/9.png, /common/p.png). */
+export const MAP_MODEL_IMAGES = ['common/f.png', 'common/9.png', 'common/p.png', 'common/11.fr', 'common/11.png'];
 
 const isSetting = (me: Player | null, bit: number) => me != null && (me.setting & bit) !== 0;
 
@@ -84,9 +84,19 @@ export function drawModel(g: Graphics, ox: number, oy: number, m: Model, isMe: b
   const y = m.py + oy + 24;
   const sp = m.getPlayerSprite();
   if (m instanceof NPC) {
-    if (!m.isVisible() || sp == null) return;
-    sp.draw(g, x, y);
-    const top = y - sp.getHeight();
+    if (!m.isVisible()) return;
+    let h: number;
+    if (sp != null) {
+      sp.draw(g, x, y);
+      h = sp.getHeight();
+    } else {
+      // A server sprite still loading: GameView.defaultNpcImg (not for monster NPCs).
+      defaultNpcImg ??= readPNGFile('/common/p.png');
+      if (m.npcType === 1 || !m.isTabStatus(TAB_LOAD_FROM_SERVER) || defaultNpcImg == null) return;
+      drawGameImage(g, defaultNpcImg, x, y, 33);
+      h = defaultNpcImg.getHeight();
+    }
+    const top = y - h;
     const name = m.getName();
     if (name) {
       if (m.npcType === NPC_TYPE_JUMP) drawSimpleBorderString(g, 1380111, 16716288, name, x, top, 33);

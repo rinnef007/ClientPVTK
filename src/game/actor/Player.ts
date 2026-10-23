@@ -779,8 +779,29 @@ export class Player extends Model {
     return d > 0 ? `${base}(+${d})` : d < 0 ? `${base}(${d})` : `${base}`;
   }
 
-  /** Auto-walk to a quest target (Player.autoMoveControlList) is not ported yet. */
+  /**
+   * Player.autoMoveControlList: the path-finding walk (moves and map jumps, Player.fromBytesByAutoMove
+   * fills it); it runs instead of the normal controls and waits while a dialog is open.
+   */
+  autoMoveControlList: Control[] = [];
+  /** UIHandler.hasUI, installed by the UI (importing it here would make a cycle). */
+  static hasUI: () => boolean = () => false;
+
   isAutoMove(): boolean {
-    return false;
+    return this.autoMoveControlList.length > 0;
+  }
+
+  clearAutoMoveList(): void {
+    this.autoMoveControlList = [];
+  }
+
+  logic(): void {
+    if (this.autoMoveControlList.length > 0) {
+      this.playerSprite?.action();
+      if (Player.hasUI()) return;
+      this.excuteControlList(this.autoMoveControlList);
+      return;
+    }
+    super.logic();
   }
 }
