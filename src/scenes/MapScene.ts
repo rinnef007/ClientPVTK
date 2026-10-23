@@ -20,13 +20,19 @@ import { DEFAULT_APPEARANCE, SPRITE_MAN_HEAD, createHeadSpriteByIcon, createSpri
 import { getAssetFS } from '../game/common/Utilities';
 import { imageSetFiles } from '../game/main/GameView';
 import { isMotion, uiClock, uiFont, uiScreen } from '../game/gui/GWidget';
-import { TYPE_ALERT, UIHandler, preloadUI } from '../game/ui/UIHandler';
+import { TYPE_ALERT, UIHandler, alertMessage, preloadUI } from '../game/ui/UIHandler';
 import '../game/ui/screens';
 import { setOnQuitGame } from '../game/ui/UIAction';
 import { EVENT_ALL_INFO_SMALL_MAP, UI_WORLD_PANEL, WorldHud, petIconFiles, type HudPetInfo } from '../game/ui/WorldHud';
 import { MyPet } from '../game/actor/MyPet';
 import * as WorldMessage from '../game/main/WorldMessage';
-import { applyPlayerDetail, buildOnlineMap, buildOnlineNpcs } from '../game/main/OnlineWorld';
+import { applyPlayerDetail, applyTeams, buildOnlineMap, buildOnlineNpcs, buildOtherPlayer } from '../game/main/OnlineWorld';
+import { mapImage } from '../game/main/ResourceHandler';
+import { NEW_SCENE_DATA_FLAG } from '../net/online/EnterGame';
+import { createWorldDataMsg } from '../net/online/LoginMessages';
+import { createJumpMapMsg, createMapImageMsg, readJumpMap, readMapImages, type MapBlocks } from '../net/online/MapMessages';
+import type { OtherPlayerData } from '../net/online/OtherPlayers';
+import { readNpcBlock, readWorldData, type NpcData } from '../net/online/WorldData';
 import type { OnlineWorld } from '../net/online/LoginFlow';
 import { MoveSync } from '../net/online/MoveSync';
 import { Condition } from '../game/core/Mission';
@@ -115,6 +121,8 @@ export class MapScene implements Scene {
   private pointerTemplate: GameSprite | null = null;
   private hud: WorldHud | null = null;
   private showHud = true;
+  /** A map change is waiting for the server (GameCanvas stage 12). */
+  private jumping = false;
 
   /** `online`: the world from the user's backend (OnlineLoginScene); null runs the offline demo. */
   constructor(
@@ -175,28 +183,20 @@ export class MapScene implements Scene {
     else await this.loadDemo(map, me);
   }
 
-  /** The world of the user's backend: its map, the player, its NPCs; no other players or demo data yet. */
+  /** The world of the user's backend: its map, the player, the other players and the NPCs. */
   private async loadOnline(map: GameMap, me: Player, online: OnlineWorld): Promise<void> {
     const hud = await this.loadHud();
-    map.initGameMapData(SCREEN_WIDTH, SCREEN_HEIGHT, hud ? 0 : HUD_H, 0);
-    map.loadMapPalette();
-    map.getPlayerLayer()?.createMapSprites();
-    await map.whenImagesReady();
-    const npcs = await buildOnlineNpcs(online.npcs);
-    await Promise.all(npcs.flatMap((n) => (n.getPlayerSprite()?.fragmentFiles ?? []).map((f) => f?.gameImage?.getImage()?.ready)));
+    this.hud = hud;
     this.pointerTemplate = GameSprite.createSprite(SPRITE_POINTER_EFFECT);
-    GameWorld.setGameMap(map);
     GameWorld.setMyPlayer(me);
-    GameWorld.otherModels.clear();
-    GameWorld.setNpcList(npcs);
+    GameWorld.allClear();
+    this.setOtherPlayers(me, online.players, online.teams);
+    await this.fetchMapImages(online, online.mapImageIds);
+    await this.placeOnlineMap(map, me, online.npcs);
     GameWorld.setDoNpc(doNpc);
     setOnMissionReward((p) => this.refreshHud(p));
-    WorldPanel.clearMyMove();
     onlineState.session = online.session;
-    onlineState.moveSync = new MoveSync(me.getGx(), me.getGy(), (m) => online.session.net.send(m));
-    map.models = [me, ...npcs];
-    map.camera = me;
-    map.init();
+    online.session.net.getMapId = () => GameWorld.gameMap?.getMapID() ?? 0;
     if (hud) {
       this.headSprite = await resolveSprite(() => createHeadSpriteByIcon(online.enter.player?.icon1 ?? 0n));
       this.setupHud(hud, me, map);
@@ -205,10 +205,102 @@ export class MapScene implements Scene {
     GameWorld.setMotion(isMotion);
     setOnQuitGame(() => this.leave());
     GameWorld.setBattleStarter((id) => this.startBattle(id, online, me));
+    GameWorld.setMapJumper((id, gx, gy) => void this.jumpMap(online, me, id, gx, gy));
+    GameWorld.setAlertHook((text) => alertMessage(text));
     setOnBagChanged((p) => this.onBagChanged(p));
-    this.hud = hud;
     this.others = [];
+  }
+
+  /**
+   * The map's layers, images and NPCs, then the world on it (GameWorld.gameMap / setNPCList,
+   * GameMap.init): shared by entering the game and by a map change.
+   */
+  private async placeOnlineMap(map: GameMap, me: Player, npcData: NpcData[]): Promise<void> {
+    map.initGameMapData(SCREEN_WIDTH, SCREEN_HEIGHT, this.hud ? 0 : HUD_H, 0);
+    map.loadMapPalette();
+    map.getPlayerLayer()?.createMapSprites();
+    await map.whenImagesReady();
+    const npcs = await buildOnlineNpcs(npcData);
+    await Promise.all(npcs.flatMap((n) => (n.getPlayerSprite()?.fragmentFiles ?? []).map((f) => f?.gameImage?.getImage()?.ready)));
+    GameWorld.setGameMap(map);
+    GameWorld.setNpcList(npcs);
+    WorldPanel.clearMyMove();
+    me.initFollowPos();
+    onlineState.moveSync = new MoveSync(me.getGx(), me.getGy(), (m) => onlineState.session?.net.send(m));
+    map.models = [me, ...npcs];
+    map.camera = me;
+    map.init();
+    if (this.hud) GameMap.initSmallMapWidth(this.hud.get(EVENT_ALL_INFO_SMALL_MAP), SCREEN_WIDTH, map);
     this.map = map;
+  }
+
+  /** handlePlayerListBase + processDataTeamMsg: the map's other players replace the old ones. */
+  private setOtherPlayers(me: Player, players: OtherPlayerData[], teams: [number, number[]][]): void {
+    GameWorld.otherModels.clear();
+    for (const d of players) GameWorld.addModel(buildOtherPlayer(d).model);
+    // Player.clearMember, then the teams.
+    me.teamRole = 0;
+    me.leaderID = 0;
+    applyTeams(teams, (id) => GameWorld.getModel(id));
+  }
+
+  /** processDataMapImageMsg: each listed image asked with 10536 into ResourceHandler.mapImage. */
+  private async fetchMapImages(online: OnlineWorld, ids: number[]): Promise<void> {
+    for (const id of ids) {
+      for (const [key, png] of readMapImages(await online.session.request(createMapImageMsg(id)))) mapImage.set(key, png);
+    }
+  }
+
+  /**
+   * GameWorld.doJumpMap to another map (stage 12, GameCanvas.doJumpMapWait): dialogs close, 10506
+   * goes out and its blocks are read (processJumpMapMsg → processDataBlockFlagMsg: position,
+   * players, map, NPCs, monsters); then, as doMapImage (stage 15), 10503 asks for
+   * Define.NEW_SCENE_DATA_FLAG, the listed map images are fetched and the new map is shown. A refusal
+   * goes to the system chat and the player stays where they are.
+   */
+  private async jumpMap(online: OnlineWorld, me: Player, mapId: number, gx: number, gy: number): Promise<void> {
+    if (this.jumping) return;
+    this.jumping = true;
+    UIHandler.closeAllUI();
+    WorldPanel.clearMyMove();
+    const oldMap = this.map;
+    const oldMapId = GameWorld.gameMap?.getMapID() ?? -1;
+    this.status = 'Đang chuyển bản đồ…';
+    this.map = null;
+    try {
+      let d: MapBlocks;
+      try {
+        d = readJumpMap(await online.session.request(createJumpMapMsg(mapId, gx, gy)));
+      } catch (e) {
+        this.map = oldMap;
+        WorldMessage.addSystemChat(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      me.setPosition(d.gx, d.gy);
+      if (d.players != null) {
+        if (d.mapId !== oldMapId) GameWorld.allClear();
+        this.setOtherPlayers(me, d.players, d.teams);
+      }
+      const map = await buildOnlineMap(d);
+      if (map == null) throw new Error('Lỗi đọc dữ liệu bản đồ');
+      if (d.newMapName != null) map.name = d.newMapName;
+      GameWorld.setGameMap(map);
+      let npcs = d.npcBytes != null ? await readNpcBlock(d.npcBytes) : [];
+      if (d.groups != null) online.groups = d.groups;
+      if (d.monsters != null) online.monsters = d.monsters;
+      const world = await readWorldData(await online.session.request(createWorldDataMsg(map.getMapID(), false, NEW_SCENE_DATA_FLAG)));
+      npcs = world.npcs;
+      if (world.groups != null) online.groups = world.groups;
+      if (world.monsters != null) online.monsters = world.monsters;
+      await this.fetchMapImages(online, [...d.mapImageIds, ...world.mapImageIds]);
+      await this.placeOnlineMap(map, me, npcs);
+      this.refreshHud(me);
+    } catch (e) {
+      // The new map could not be built: the connection's map and the client's now differ.
+      this.status = `Lỗi đổi bản đồ: ${e instanceof Error ? e.message : e}`;
+    } finally {
+      this.jumping = false;
+    }
   }
 
   /**
@@ -489,6 +581,7 @@ export class MapScene implements Scene {
 
   private leave(): void {
     GameWorld.setBattleStarter(null);
+    GameWorld.setMapJumper(null);
     this.online?.session.net.close();
     onlineState.session = null;
     onlineState.moveSync = null;

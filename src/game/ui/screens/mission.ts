@@ -12,7 +12,7 @@ import { GContainer, GLabel, GTextArea, GWidget, GWindow, ICON_SIGN, uiScreen } 
 import { isNullText } from '../../common/Tool';
 import { MessageFrame, WIDTH_MAX } from '../../core/MessageFrame';
 import { Mission, STATUS_NOT_READY, STATUS_SUBMIT } from '../../core/Mission';
-import { NPC, NPC_TYPE_MONSTER } from '../../actor/NPC';
+import { NPC, NPC_TYPE_MONSTER, NPC_TYPE_POWER } from '../../actor/NPC';
 import type { Player } from '../../actor/Player';
 import * as GameWorld from '../../main/GameWorld';
 import * as WorldMessage from '../../main/WorldMessage';
@@ -53,10 +53,18 @@ const SUB_ACCEPT = 7;
 const SUB_DOING = 8;
 const SUB_VIEW = 9;
 const SUB_SUBMIT = 10;
-/** handlerMissionNPCAction kinds: 1 choose a mission, 4 open the shop, 7 leave. */
+/**
+ * handlerMissionNPCAction kinds: 1 choose a mission, 2 a power NPC menu entry (jump / battle / shop /
+ * teacher, then its index), 3 the gate's jump, 4 open the shop, 5 the teacher, 7 leave.
+ */
 const NPC_ACTION_MISSION = 1;
+const NPC_ACTION_MENU = 2;
+const NPC_ACTION_JUMP = 3;
 const NPC_ACTION_SHOP = 4;
 const NPC_ACTION_LEAVE = 7;
+const MENU_JUMP = 0;
+const MENU_BATTLE = 1;
+const MENU_SHOP = 2;
 
 /** UIObject of a mission dialog: who is looking, at which mission, with which NPC. */
 interface MissionUIObj {
@@ -66,7 +74,7 @@ interface MissionUIObj {
 }
 /** A button: its text, and for NPC lists the mission status shown as an icon (set 3). */
 type MissionLabel = [string] | [string, number];
-type NpcAction = [number, Mission?];
+type NpcAction = [number, Mission?] | [typeof NPC_ACTION_MENU, number, number];
 /** doSpecialNpc's npcType → handlerMissionNPCAction kind (3 jump, 4 shop, 5 teacher, 6 …). */
 const SPECIAL_NPC_ACTION: Record<number, number> = { 3: 3, 8: 3, 7: 5, 2: NPC_ACTION_SHOP, 9: 6 };
 
@@ -586,20 +594,49 @@ function doMissionNpc(p: Player, npc: NPC): void {
     // Mission.isShowNotAcceptMission needs accept conditions of a kind not ported: hidden.
     if (status !== STATUS_NOT_READY) push(m, status);
   }
-  if (labels.length === 1 && actions.length === 1) return handlerMissionNPCAction(npc, actions[0]);
-  if (done.length === 1 && npc.npcType === 0) return handlerMissionNPCAction(npc, done[0]);
+  if (npc.npcType === NPC_TYPE_POWER) addPowerNPCChoice(p, npc, labels, actions);
+  if (labels.length === 1 && actions.length === 1) {
+    if (actions[0][0] === NPC_ACTION_MISSION) return handlerMissionNPCAction(npc, actions[0]);
+  } else if (done.length === 1 && npc.npcType === 0) {
+    return handlerMissionNPCAction(npc, done[0]);
+  }
   labels.push([STR_LEAVE]);
   actions.push([NPC_ACTION_LEAVE]);
   createMissionUI(npc.name, npc.talkDetail ?? '', labels, actions, SUB_NPC, { player: p, mission: null, npc }, null);
 }
 
+/** NPC.addPowerNPCChoice: the power NPC's jump, battle, shop and teacher entries the player may use. */
+function addPowerNPCChoice(p: Player, npc: NPC, labels: MissionLabel[], actions: NpcAction[]): void {
+  const lists = [npc.jumpMap, npc.menuBattle, npc.menuShop, npc.menuTeacher];
+  lists.forEach((list, kind) => {
+    list.forEach((e, i) => {
+      if (!Mission.checkPlayerMissionStatus(p, e.reqMissionID, e.reqMissionState)) return;
+      labels.push([e.text]);
+      actions.push([NPC_ACTION_MENU, kind, i]);
+    });
+  });
+}
+
 /**
- * NPC.handlerMissionNPCAction: 1 opens the mission, 4 the NPC's shop, 7 ("Rời đi") closes
- * everything; jumps, battles and teachers need the server.
+ * NPC.handlerMissionNPCAction: 1 opens the mission, 2 a power NPC entry, 3 the gate's jump, 4 the
+ * NPC's shop, 7 ("Rời đi") closes everything. Teachers (skill shops) are not ported.
  */
 function handlerMissionNPCAction(npc: NPC, a: NpcAction): void {
-  if (a[0] === NPC_ACTION_MISSION && a[1]) handleChoiceMissionAction(a[1], npc);
-  else if (a[0] === NPC_ACTION_SHOP) doBrowseShop(npc.shopID[0] ?? 0);
+  if (a[0] === NPC_ACTION_MISSION && a[1]) handleChoiceMissionAction(a[1] as Mission, npc);
+  else if (a[0] === NPC_ACTION_MENU) {
+    const kind = a[1] as number;
+    const i = a[2] as number;
+    if (kind === MENU_JUMP) {
+      const e = npc.jumpMap[i];
+      if (e) GameWorld.doJumpMap(e.id, e.gx ?? 0, e.gy ?? 0);
+    } else if (kind === MENU_BATTLE) GameWorld.toBattle(npc.menuBattle[i]?.id ?? 0, false);
+    else if (kind === MENU_SHOP) doBrowseShop(npc.menuShop[i]?.id ?? 0);
+    else alertMessage(STR_NEED_SERVER);
+  } else if (a[0] === NPC_ACTION_JUMP) {
+    // A jump-area NPC (type 8) carries no target in 1.2.0's NPC.fromBytes: nothing to do.
+    const e = npc.jumpMap[0];
+    if (e) GameWorld.doJumpMap(e.id, e.gx ?? 0, e.gy ?? 0);
+  } else if (a[0] === NPC_ACTION_SHOP) doBrowseShop(npc.shopID[0] ?? 0);
   else if (a[0] === NPC_ACTION_LEAVE) UIHandler.closeAllUI();
   else alertMessage(STR_NEED_SERVER);
 }

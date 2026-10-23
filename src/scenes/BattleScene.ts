@@ -147,7 +147,7 @@ export class BattleScene implements Scene, BattleHost {
   update(input: InputState): void {
     if (this.setup.session) {
       this.setup.session.pump();
-      for (const m of this.setup.session.takeUnhandled()) handlePush(m, this.setup.me);
+      for (const m of this.setup.session.takeUnhandled()) handlePush(m, this.setup.me, true);
     }
     uiClock.tick++;
     WorldMessage.logic();

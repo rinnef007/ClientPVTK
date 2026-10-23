@@ -1,6 +1,6 @@
 // Port of the wandering part of com.hz.actor.NPC (Vineflower decompile of classes2.dex).
 // The quest data (missions offered, talk text, sign) is here; the dialog flow is in
-// ui/screens/mission.ts. Not ported: shops, battles, welcome frames, jump-map NPCs.
+// ui/screens/mission.ts. Not ported: welcome frames.
 import type { Graphics } from '../../midp/Graphics';
 import { getXKey, getYKey, isColliding, rand } from '../common/Tool';
 import { Control } from '../main/Control';
@@ -12,7 +12,23 @@ import { Model, TYPE_NPC } from './Model';
 export const NPC_TYPE_MONSTER = 1;
 /** npcType 2: a shop keeper (NPC.doSpecialNpc offers its topic, which opens shopID[0]). */
 export const NPC_TYPE_SHOP = 2;
+/** npcType 3: a gate (its topic jumps to jumpMap[0]); 5: a "power" NPC with menus; 8: a jump area. */
+export const NPC_TYPE_GATE = 3;
+export const NPC_TYPE_POWER = 5;
 export const NPC_TYPE_JUMP = 8;
+
+/**
+ * One entry of a gate / power NPC (NPC.menuJumpMap + jumpMapID / Gx / Gy, menuBattle + battleID,
+ * menuShop + shopID, menuTeacher + teacherId, each with the mission state it needs).
+ */
+export interface NpcMenu {
+  text: string;
+  id: number;
+  gx?: number;
+  gy?: number;
+  reqMissionID: number;
+  reqMissionState: number;
+}
 
 export class NPC extends Model {
   npcType = 0;
@@ -34,6 +50,12 @@ export class NPC extends Model {
   /** A battle NPC's monster groups (NPC.battleID) and seconds before it comes back after a fight. */
   battleID: number[] = [];
   comeOutTime = 0;
+  /** Gate (type 3) and power NPC (type 5) menus. */
+  jumpMap: NpcMenu[] = [];
+  menuBattle: NpcMenu[] = [];
+  menuShop: NpcMenu[] = [];
+  menuTeacher: NpcMenu[] = [];
+  teacherId: number[] = [];
   private comeOutCounter = 0;
   status = 0;
   rangeX = 0;
@@ -74,6 +96,12 @@ export class NPC extends Model {
   }
   isEnable(): boolean {
     return this.enable;
+  }
+
+  /** NPC.isInJumpMapArea: (gx, gy) inside the spawn cell ± range (jump areas, type 8). */
+  isInJumpMapArea(gx: number, gy: number): boolean {
+    return gx >= this.sourceGx - this.rangeX && gx <= this.sourceGx + this.rangeX
+      && gy >= this.sourceGy - this.rangeY && gy <= this.sourceGy + this.rangeY;
   }
 
   /** Remembers the spawn cell that bounds wandering. */

@@ -1,16 +1,18 @@
 // The login sequence of GameCanvas (stages version check → CMN login → area list → game server →
 // character list / create → enter game) against the user's backend, plus the world data request the
-// client makes on entering a map (NPCs only for now). The Android client opens a new socket to the
+// client makes on entering a map (players, then NPCs, monsters and map images). The Android client opens a new socket to the
 // line's sockUrl after the area list; through the WebSocket bridge the same connection is kept,
 // which the backend accepts (it checks the session id and ukey of message 1).
-import { readEnterGame, type EnterGameData } from './EnterGame';
+import { BLOCK_PLAYERS, NEW_SCENE_DATA_FLAG, readDataBlocks, readEnterGame, type EnterGameData } from './EnterGame';
 import {
   createAddPlayerMsg, createAreaLineListMsg, createCheckEditionMsg, createFirstGameServerMsg, createPlayerEnterMsg,
   createPlayerListMsg, createUserLoginMsg, createWorldDataMsg, readAddPlayer, readAreaLineList, readCheckEdition,
   readFirstGameServer, readPlayerEnterStatus, readPlayerList, readUserLogin, type ListPlayer, type NewPlayer,
 } from './LoginMessages';
 import type { OnlineSession } from './OnlineSession';
-import { BLOCK_MONSTER_GROUPS, BLOCK_MONSTERS, BLOCK_NPC, readWorldData, type NpcData } from './WorldData';
+import { readWorldData, type NpcData } from './WorldData';
+import type { OtherPlayerData } from './OtherPlayers';
+import type { Message } from '../Message';
 import type { Monster } from '../../game/actor/Monster';
 import type { MonsterGroup } from '../../game/core/MonsterGroup';
 
@@ -19,9 +21,14 @@ export interface OnlineWorld {
   character: ListPlayer;
   enter: EnterGameData;
   npcs: NpcData[];
-  /** The battles of the map's monster NPCs (blocks 2048 / 4096). */
+  /** The battles of the map's monster NPCs (blocks 2048 / 4096); replaced on a map change. */
   groups: MonsterGroup[];
   monsters: Monster[];
+  /** Block 64: the other players on the map and their teams. */
+  players: OtherPlayerData[];
+  teams: [number, number[]][];
+  /** Block 8192: map images to fetch with 10536. */
+  mapImageIds: number[];
   areaName: string;
 }
 
@@ -55,8 +62,21 @@ export async function runLogin(session: OnlineSession, o: LoginOptions): Promise
   const reply = await session.request(createPlayerEnterMsg(character.id, 0, o.deviceId));
   readPlayerEnterStatus(reply);
   const enter = readEnterGame(reply);
+  // GameCanvas.doConnWorld (stage 14): the players of the map; doMapImage (stage 15): NPCs,
+  // monsters and map images (Define.NEW_SCENE_DATA_FLAG).
+  o.onStep('Tải người chơi…');
+  const others = readPlayersBlock(await session.request(createWorldDataMsg(enter.mapId, false, BLOCK_PLAYERS)));
   o.onStep('Tải NPC và quái…');
-  const blocks = BLOCK_NPC | BLOCK_MONSTER_GROUPS | BLOCK_MONSTERS;
-  const world = await readWorldData(await session.request(createWorldDataMsg(enter.mapId, false, blocks)));
-  return { session, character, enter, npcs: world.npcs, groups: world.groups, monsters: world.monsters, areaName };
+  const world = await readWorldData(await session.request(createWorldDataMsg(enter.mapId, false, NEW_SCENE_DATA_FLAG)));
+  return {
+    session, character, enter, npcs: world.npcs, groups: world.groups ?? [], monsters: world.monsters ?? [],
+    players: others.players ?? [], teams: others.teams, mapImageIds: world.mapImageIds, areaName,
+  };
+}
+
+/** processWorldDataMsg for block 64: the players and teams (a refusal leaves the map empty). */
+function readPlayersBlock(m: Message): { players: OtherPlayerData[] | null; teams: [number, number[]][] } {
+  if (m.getByte() !== 0) return { players: null, teams: [] };
+  const d = readDataBlocks(m);
+  return { players: d.players, teams: d.teams };
 }

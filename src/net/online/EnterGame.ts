@@ -3,11 +3,15 @@
 // readers Player.fromBytes, MyPet.fromBytesDetail, Item.fromBytes, Skill.fromBytes (jadx decompile of
 // 1.2.0; the title line of Player.fromBytes and some Item fields differ from the older client this
 // web port started from). Values the web client has no use for yet are read and dropped so the
-// cursor stays aligned. Blocks are read in increasing bit order; reading stops after the map block
-// (512) because the later blocks (formations, talents…) are not ported.
+// cursor stays aligned. Blocks are read in increasing bit order; after the map block (512) reading
+// stops at the first block that is not ported (notice 65536, formations, talents…).
 import { Item } from '../../game/actor/Item';
+import type { Monster } from '../../game/actor/Monster';
+import type { MonsterGroup } from '../../game/core/MonsterGroup';
 import { Skill } from '../../game/core/Skill';
 import { Message } from '../Message';
+import { readOtherPlayer, readTeams, type OtherPlayerData } from './OtherPlayers';
+import { readMonsterGroups, readMonsters } from './WorldData';
 
 /** Block bits of processDataBlockFlagMsg that this reader understands. */
 export const BLOCK_PLAYER_DETAIL = 2;
@@ -15,8 +19,22 @@ export const BLOCK_MISSION_STATUS = 4;
 export const BLOCK_MISSIONS = 8;
 export const BLOCK_ITEMS = 16;
 export const BLOCK_SKILLS = 32;
+export const BLOCK_PLAYERS = 64;
 export const BLOCK_MAP_TEST = 256;
 export const BLOCK_MAP = 512;
+export const BLOCK_NPC = 1024;
+export const BLOCK_MONSTER_GROUPS = 2048;
+export const BLOCK_MONSTERS = 4096;
+export const BLOCK_MAP_IMAGES = 8192;
+export const BLOCK_MAP_NAME = 16384;
+export const BLOCK_CITY = 32768;
+/** Define.NEW_SCENE_DATA_FLAG: what GameCanvas.doMapImage asks for after a new map. */
+export const NEW_SCENE_DATA_FLAG = BLOCK_NPC | BLOCK_MONSTER_GROUPS | BLOCK_MONSTERS | BLOCK_MAP_IMAGES;
+
+/** Define.isAllocateMirrorMap: copies of a map share its data (the reply adds the original id). */
+export function isAllocateMirrorMap(id: number): boolean {
+  return id >= 30000 && id <= 31999;
+}
 
 /** Tool.byte2short: an unsigned byte. */
 const u8 = (m: Message) => m.getByte() & 0xff;
@@ -129,6 +147,24 @@ export interface EnterGameData {
   mapBytes: Uint8Array | null;
   mapName: string;
   mapTip: string;
+  weather: number;
+  /** GameWorld.orgMapID: the map a mirror map copies (else the map id). */
+  orgMapId: number;
+  /** Block 64: the other players (null when the block did not come) and their teams. */
+  players: OtherPlayerData[] | null;
+  teams: [number, number[]][];
+  /** Block 1024: the NPC data as sent (maybe gzip; see WorldData.readNpcList). */
+  npcBytes: Uint8Array | null;
+  /** Blocks 2048 / 4096 (null when they did not come). */
+  groups: MonsterGroup[] | null;
+  monsters: Monster[] | null;
+  /** Block 8192: map image ids to fetch with 10536. */
+  mapImageIds: number[];
+  /** Blocks 16384 / 32768: a new map name and city values. */
+  newMapName: string | null;
+  city: { masterId: number; degree: number; army: number; scale: number; level: number } | null;
+  /** The first block that was not read (0 = all were). */
+  unread: number;
 }
 
 /** Player.fromBytes (1.2.0). GameWorld.isQQVip is false here, so its extra byte is not read. */
@@ -426,17 +462,19 @@ export function readEnterGame(m: Message): EnterGameData {
 }
 
 /**
- * processDataBlockFlagMsg: map id (mirror maps — Define.isAllocateMirrorMap — are not handled),
- * position, flags, then each block. Throws on a block it cannot read before the map.
+ * processDataBlockFlagMsg: map id (and the original id of a mirror map), position, flags, then each
+ * block. A block that is not ported throws before the map block and stops reading after it.
  */
 export function readDataBlocks(m: Message): Omit<EnterGameData, 'loginSetting'> {
   const mapId = m.getInt();
+  const orgMapId = isAllocateMirrorMap(mapId) ? m.getShort() : mapId;
   const gx = m.getByte();
   const gy = m.getByte();
   const flags = m.getInt();
   const d: Omit<EnterGameData, 'loginSetting'> = {
     mapId, gx, gy, flags, player: null, pet: null, missionStatus: null, missions: [], items: [], skills: [],
-    mapBytes: null, mapName: '', mapTip: '',
+    mapBytes: null, mapName: '', mapTip: '', weather: 0, orgMapId, players: null, teams: [], npcBytes: null,
+    groups: null, monsters: null, mapImageIds: [], newMapName: null, city: null, unread: 0,
   };
   for (let bit = 0; bit < 32; bit++) {
     const block = flags & (1 << bit);
@@ -460,15 +498,44 @@ export function readDataBlocks(m: Message): Omit<EnterGameData, 'loginSetting'> 
       case BLOCK_SKILLS:
         d.skills = readSkillList(m, true);
         break;
+      case BLOCK_PLAYERS:
+        d.players = [];
+        for (let n = m.getShort(); n > 0; n--) d.players.push(readOtherPlayer(m));
+        d.teams = readTeams(m);
+        break;
       case BLOCK_MAP_TEST:
       case BLOCK_MAP:
         d.mapBytes = m.getBytes();
         d.mapName = m.getString();
         d.mapTip = m.getString();
-        m.getByte(); // Weather.update
-        return d;
+        d.weather = m.getByte();
+        break;
+      case BLOCK_NPC:
+        d.npcBytes = m.getBytes();
+        break;
+      case BLOCK_MONSTER_GROUPS:
+        d.groups = readMonsterGroups(m);
+        break;
+      case BLOCK_MONSTERS:
+        d.monsters = readMonsters(m);
+        break;
+      case BLOCK_MAP_IMAGES:
+        for (let n = m.getByte() & 0xff; n > 0; n--) d.mapImageIds.push(m.getShort());
+        break;
+      case BLOCK_MAP_NAME:
+        d.newMapName = m.getString();
+        d.city = { masterId: 0, degree: m.getInt(), army: m.getInt(), scale: 0, level: 0 };
+        break;
+      case BLOCK_CITY: {
+        const masterId = m.getInt();
+        d.newMapName = m.getString();
+        d.city = { masterId, degree: m.getInt(), army: m.getInt(), scale: m.getByte(), level: m.getByte() };
+        break;
+      }
       default:
-        throw new Error(`Khối dữ liệu ${block} chưa được port`);
+        if (d.mapBytes == null) throw new Error(`Khối dữ liệu ${block} chưa được port`);
+        d.unread = block;
+        return d;
     }
   }
   return d;

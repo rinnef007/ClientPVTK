@@ -259,6 +259,18 @@ export class Mission {
     return i < bits.length && (bits[i] & (1 << (id % 8))) !== 0;
   }
 
+  /**
+   * Mission.checkPlayerMissionStatus: a menu entry's requirement. No mission (id ≤ 0) passes; bit 1
+   * accepts it finished, 2 in progress, 4 complete but not handed in, 8 not taken (and not finished).
+   */
+  static checkPlayerMissionStatus(p: Player | null, id: number, state: number): boolean {
+    if (id <= 0 || p == null) return true;
+    if ((state & 1) !== 0 && Mission.isMissionFinish(p, id)) return true;
+    const m = p.getMissionById(id);
+    if (m != null) return m.isComplete(p) ? (state & 4) !== 0 : (state & 2) !== 0;
+    return (state & 8) !== 0 && !Mission.isMissionFinish(p, id);
+  }
+
   static setMissionStatus(p: Player | null, id: number, finished: boolean): void {
     const bits = p?.missionStatus;
     if (bits == null || id < 0 || id >> 3 >= bits.length) return;

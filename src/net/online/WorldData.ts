@@ -1,29 +1,19 @@
-// Reader for the world data reply (10503) block 1024: the map's NPCs, gzip-wrapped, in the format of
-// NPC.loadNPC / NPC.fromBytes of client 1.2.0 (jadx decompile). NPC.readMissionNPCData is empty in
-// 1.2.0, so mission NPCs (type 0) carry nothing after the common part.
-// Blocks 2048 / 4096 carry the monster groups, monsters and their AI (MsgHandler
-// processDataMonsterGroupMsg / processDataMonsterMsg / processDataMonsterAIMsg).
+// The world data reply (10503, processWorldDataMsg) and the readers of its scene blocks. Block 1024:
+// the map's NPCs, gzip-wrapped, in the format of NPC.loadNPC / NPC.fromBytes of client 1.2.0 (jadx
+// decompile); NPC.readMissionNPCData is empty in 1.2.0, so mission NPCs (type 0) carry nothing after
+// the common part. Blocks 2048 / 4096: the monster groups, monsters and their AI (MsgHandler
+// processDataMonsterGroupMsg / processDataMonsterMsg / processDataMonsterAIMsg). The blocks
+// themselves are walked by EnterGame.readDataBlocks.
 import { Monster } from '../../game/actor/Monster';
 import { MonsterAI } from '../../game/battle/MonsterAI';
 import { DataInputStream } from '../../game/common/DataStream';
 import { MonsterGroup } from '../../game/core/MonsterGroup';
 import type { Skill } from '../../game/core/Skill';
+import type { NpcMenu } from '../../game/actor/NPC';
 import { Message } from '../Message';
-import { readSkill } from './EnterGame';
+import { readDataBlocks, readSkill } from './EnterGame';
 
-export const BLOCK_NPC = 1024;
-export const BLOCK_MONSTER_GROUPS = 2048;
-export const BLOCK_MONSTERS = 4096;
-
-/** A menu entry of a "power" NPC (type 5): its text, target id and the mission state it needs. */
-export interface NpcMenu {
-  text: string;
-  id: number;
-  reqMissionID: number;
-  reqMissionState: number;
-  gx?: number;
-  gy?: number;
-}
+export { BLOCK_MONSTER_GROUPS, BLOCK_MONSTERS, BLOCK_NPC } from './EnterGame';
 
 export interface NpcData {
   /** NPC.readNPCSign: quest sign 0..4 (out-of-range values become 0). */
@@ -149,14 +139,25 @@ export async function gunzip(data: Uint8Array): Promise<Uint8Array> {
 
 export interface WorldData {
   npcs: NpcData[];
-  groups: MonsterGroup[];
-  monsters: Monster[];
+  /** Null when the blocks did not come. */
+  groups: MonsterGroup[] | null;
+  monsters: Monster[] | null;
+  /** Block 8192: map image ids to fetch (10536). */
+  mapImageIds: number[];
+}
+
+/** processDataMonsterGroupMsg. */
+export function readMonsterGroups(m: Message): MonsterGroup[] {
+  const out: MonsterGroup[] = [];
+  for (let i = m.getByte(); i > 0; i--) out.push(MonsterGroup.fromBytes(m));
+  return out;
 }
 
 /** processDataMonsterMsg then processDataMonsterAIMsg (only when monsters came). */
-function readMonsters(m: Message, out: Monster[]): void {
+export function readMonsters(m: Message): Monster[] {
+  const out: Monster[] = [];
   const n = m.getByte();
-  if (n <= 0) return;
+  if (n <= 0) return out;
   for (let i = 0; i < n; i++) {
     const o = Monster.fromBytes(m);
     if (o != null) out.push(o);
@@ -168,25 +169,19 @@ function readMonsters(m: Message, out: Monster[]): void {
     const o = out.find((x) => x.id === ai.id);
     if (o != null) o.monsterAI = ai;
   }
+  return out;
 }
 
-/**
- * The 10503 reply for blocks 1024 (NPCs), 2048 (monster groups) and 4096 (monsters): status,
- * header, then the blocks in bit order. Other blocks are not expected here.
- */
+/** The NPC block as GameWorld.setNPCList gets it: inflated, then NPC.parseNPCData. */
+export async function readNpcBlock(data: Uint8Array | null): Promise<NpcData[]> {
+  return data == null || data.length === 0 ? [] : readNpcList(await gunzip(data));
+}
+
+/** processWorldDataMsg (10503): status, then processDataBlockFlagMsg. */
 export async function readWorldData(m: Message): Promise<WorldData> {
   if (m.getByte() !== 0) throw new Error(m.getString());
-  m.getInt(); // map id
-  m.getByte(); // gx
-  m.getByte(); // gy
-  const flags = m.getInt();
-  const known = BLOCK_NPC | BLOCK_MONSTER_GROUPS | BLOCK_MONSTERS;
-  if ((flags & ~known) !== 0) throw new Error(`10503: khối ${flags & ~known} chưa hỗ trợ`);
-  const out: WorldData = { npcs: [], groups: [], monsters: [] };
-  if (flags & BLOCK_NPC) out.npcs = readNpcList(await gunzip(m.getBytes()));
-  if (flags & BLOCK_MONSTER_GROUPS) for (let i = m.getByte(); i > 0; i--) out.groups.push(MonsterGroup.fromBytes(m));
-  if (flags & BLOCK_MONSTERS) readMonsters(m, out.monsters);
-  return out;
+  const d = readDataBlocks(m);
+  return { npcs: await readNpcBlock(d.npcBytes), groups: d.groups, monsters: d.monsters, mapImageIds: d.mapImageIds };
 }
 
 /** The 10503 reply when only block 1024 was asked for. */

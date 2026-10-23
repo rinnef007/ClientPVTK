@@ -64,9 +64,12 @@ export function getNpcByID(id: number): NPC | null {
   return npcList.find((n) => n.getId() === id) ?? null;
 }
 
-/** Visible NPC standing on grid (gx, gy). (Jump-map NPC areas are not ported.) */
+/** GameWorld.getNPC: the visible NPC on grid (gx, gy); a jump-area NPC (type 8) covers its range. */
 export function getNPC(gx: number, gy: number): NPC | null {
-  for (const n of npcList) if (n.isVisible() && n.getGx() === gx && n.getGy() === gy) return n;
+  for (const n of npcList) {
+    if (!n.isVisible()) continue;
+    if (n.npcType === 8 ? n.isInJumpMapArea(gx, gy) : n.getGx() === gx && n.getGy() === gy) return n;
+  }
   return null;
 }
 
@@ -77,8 +80,51 @@ export function setDoNpc(fn: (npc: NPC) => boolean): void {
   doNpc = fn;
 }
 
-/** Map change; offline there is only one map. */
-export let doJumpMap: (mapId: number, gx: number, gy: number) => void = () => {};
+/** The scene's map change (GameWorld.changeStage(12) with MsgHandler.jumpMapMsg); none offline. */
+let mapJumper: ((mapId: number, gx: number, gy: number) => void) | null = null;
+export function setMapJumper(fn: ((mapId: number, gx: number, gy: number) => void) | null): void {
+  mapJumper = fn;
+}
+
+/**
+ * GameWorld.doJumpMap: not from a stall; on the same map the player is placed (team members stay
+ * with their leader), otherwise the scene asks the server for the new map.
+ */
+export function doJumpMap(mapId: number, gx: number, gy: number): void {
+  const p = myPlayer;
+  if (p == null) return;
+  if (p.isShopMode()) {
+    alertHook('Đang bày bán không thể nhảy hình '); // GameText.STR_IN_SHOP_NO_JUMP
+    return;
+  }
+  if (gameMap != null && gameMap.getMapID() === mapId) {
+    if (p.isMember()) return;
+    p.setPosition(gx, gy);
+    p.initFollowPos();
+  } else if (mapJumper != null) {
+    mapJumper(mapId, gx, gy);
+  }
+}
+
+/** UIHandler.alertMessage, installed by the UI (GameWorld cannot import it). */
+export let alertHook: (text: string) => void = () => {};
+export function setAlertHook(fn: (text: string) => void): void {
+  alertHook = fn;
+}
+
+/** GameWorld.allClear (new map): NPCs and other players go. Monster data lives with the scene. */
+export function allClear(): void {
+  npcList = [];
+  otherModels.clear();
+}
+
+/** GameWorld.addModel / removeModel: other players (never the local one). */
+export function addModel(m: Model): void {
+  if (myPlayer == null || m.getId() !== myPlayer.getId()) otherModels.set(m.getId(), m);
+}
+export function removeModel(id: number): void {
+  otherModels.delete(id);
+}
 
 export function getSpeed(m: Model): number {
   return m === myPlayer ? myMoveSpeed : 6;

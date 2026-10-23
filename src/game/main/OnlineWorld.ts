@@ -5,11 +5,14 @@
 import { NPC } from '../actor/NPC';
 import { PlayerBag } from '../actor/Item';
 import {
-  ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, type Player,
+  ATTR_EXP, ATTR_EXP_MAX, ATTR_HP, ATTR_LEVEL, ATTR_MONEY1, ATTR_MONEY2, ATTR_MONEY3, ATTR_MP, Player,
 } from '../actor/Player';
 import { Mission } from '../core/Mission';
 import { GameMap } from '../map/GameMap';
-import { GameSprite, preloadSprite } from '../sprite/GameSprite';
+import { GameSprite, preloadSprite, resolveSprite } from '../sprite/GameSprite';
+import { createPetSpriteByIcon, createSpriteByIcon } from '../sprite/SpriteIcon';
+import { TYPE_PET, type Model } from '../actor/Model';
+import type { OtherPlayerData } from '../../net/online/OtherPlayers';
 import type { EnterGameData, PetDetail, PlayerDetail } from '../../net/online/EnterGame';
 import { MyPet } from '../actor/MyPet';
 import { gunzip, type NpcData } from '../../net/online/WorldData';
@@ -17,7 +20,7 @@ import { gunzip, type NpcData } from '../../net/online/WorldData';
 const ATTR_SKILL_POINTS = 5;
 
 /** parseMapData: inflate if gzip, GameMap.loadMap, then the id and name from the reply. */
-export async function buildOnlineMap(enter: EnterGameData): Promise<GameMap | null> {
+export async function buildOnlineMap(enter: Pick<EnterGameData, 'mapBytes' | 'mapId' | 'mapName'>): Promise<GameMap | null> {
   if (enter.mapBytes == null || enter.mapBytes.length === 0) return null;
   const map = GameMap.loadMap(await gunzip(enter.mapBytes));
   if (map == null) return null;
@@ -113,6 +116,11 @@ export async function buildOnlineNpcs(list: NpcData[]): Promise<NPC[]> {
     n.shopID = d.shopID;
     n.battleID = d.battleID;
     n.comeOutTime = d.comeOutTime;
+    n.jumpMap = d.jumpMap;
+    n.menuBattle = d.menuBattle;
+    n.menuShop = d.menuShop;
+    n.menuTeacher = d.menuTeacher;
+    n.teacherId = d.teacherId;
     n.setSource(d.gx, d.gy, d.rangeX, d.rangeY);
     n.setVisible((d.status & 1) !== 0);
     n.setEnable((d.status & 2) !== 0);
@@ -121,4 +129,60 @@ export async function buildOnlineNpcs(list: NpcData[]): Promise<NPC[]> {
     n.setAnimationByDir(false);
     return n;
   });
+}
+
+/**
+ * processDataPlayerListBase → Model: another player with its look, title, mode and pet. The sprites
+ * load afterwards (Worker works 32 / 64 in Java): `ready` resolves once they are set.
+ */
+export function buildOtherPlayer(d: OtherPlayerData): { model: Player; ready: Promise<void> } {
+  const p = new Player();
+  Object.assign(p, {
+    id: d.id, name: d.name, title: d.title, level: d.level, level2: d.level2, setting: d.setting, mode: d.mode,
+    shopName: d.shopName, shopType: d.shopType, remark: d.remark, vipLevel: d.vipLevel, vipLevel2: d.vipLevel2,
+    countryName: d.countryName, enchantValue: d.enchantValue,
+  });
+  p.setPosition(d.gx, d.gy);
+  let pet: Player | null = null;
+  if (d.pet != null) {
+    pet = new Player(TYPE_PET);
+    pet.id = d.pet.id;
+    pet.name = d.pet.name;
+    p.setPet(pet);
+    p.initFollowPos();
+  }
+  const ready = (async () => {
+    const s = await resolveSprite(() => createSpriteByIcon(d.icon1, d.icon2, d.icon3, false));
+    if (s != null) {
+      p.setPlayerSprite(s);
+      p.setAnimationByDir(false);
+    }
+    if (pet != null && d.pet != null) {
+      const icon = d.pet.icon1;
+      const ps = await resolveSprite(() => createPetSpriteByIcon(icon, false));
+      if (ps != null) {
+        pet.setPlayerSprite(ps);
+        pet.setAnimationByDir(false);
+      }
+    }
+  })().catch(() => {
+    // A look that cannot be built leaves the player without a sprite (not drawn).
+  });
+  return { model: p, ready };
+}
+
+/** processDataTeamMsg: leaders and members of the teams on the map (Model.addMember). */
+export function applyTeams(teams: [number, number[]][], getModel: (id: number) => Model | null): void {
+  for (const [leaderId, members] of teams) {
+    const leader = getModel(leaderId);
+    if (leader == null) continue;
+    leader.teamRole = 1;
+    leader.leaderID = leaderId;
+    for (const id of members) {
+      const m = getModel(id);
+      if (m == null || m === leader) continue;
+      m.teamRole = 2;
+      m.leaderID = leaderId;
+    }
+  }
 }
