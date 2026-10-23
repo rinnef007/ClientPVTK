@@ -292,7 +292,7 @@ function readAscension(m: Message, it: Item): void {
   it.powerValue2 = m.getShort();
   it.power3 = u8(m);
   it.powerValue3 = m.getShort();
-  m.getString(); // skillDesc
+  it.skillDesc = m.getString();
   it.bindPower1 = u8(m);
   it.bindPowerValue1 = m.getShort();
   it.bindPower2 = u8(m);

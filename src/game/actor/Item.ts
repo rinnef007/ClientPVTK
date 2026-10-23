@@ -84,6 +84,54 @@ export class Item {
   upgradeStar = 0;
   /** Item.isUpgradeItemOpen (server switch; off unless the server says so). */
   static isUpgradeItemOpen = false;
+  /** The skill the item gives when worn (Item.skillDesc; empty = none). */
+  skillDesc = '';
+
+  /** Item.isPetEgg: power 109 hatches a pet. */
+  isPetEgg(): boolean {
+    return this.power1 === 109;
+  }
+  /** Item.isChestItem: boxes that give items when opened. */
+  isChestItem(): boolean {
+    return [100, 101, 102, 183, 109, 184].includes(this.power1);
+  }
+  isTitleItem(): boolean {
+    return this.power1 === 112;
+  }
+  isPetExpItem(): boolean {
+    return this.power1 === 118;
+  }
+  isPlayerExpItem(): boolean {
+    return this.power1 === 119;
+  }
+  isPetAgeItem(): boolean {
+    return this.id === 40005;
+  }
+  isPetResetItem(): boolean {
+    return this.id === 40004 || this.id === 40015;
+  }
+  isPetAddSkill(): boolean {
+    return this.id === 40020;
+  }
+  isSkillPetItem(): boolean {
+    return this.id === 42005 || this.id === 42007 || this.id === 42018;
+  }
+  /**
+   * Item.isPetCanUseItem (pet skill books — isPetSkillBook / isPetSealSkillBook — are not
+   * identified in the web client yet).
+   */
+  isPetCanUseItem(): boolean {
+    return this.isPetAgeItem() || this.isPetResetItem() || this.isPetExpItem() || this.isPetAddSkill() || this.isSkillPetItem();
+  }
+  isHasSkill(): boolean {
+    return this.skillDesc.trim().length > 0;
+  }
+  /** Item.isNeedWaitForSkill: it or what it replaces gives a skill (the server answers with the skills). */
+  isNeedWaitForSkill(bag: PlayerBag | null): boolean {
+    if (this.isHasSkill()) return true;
+    for (const pos of PlayerBag.getEquipPosByType(this.type) ?? []) if (bag?.getItem(pos)?.isHasSkill()) return true;
+    return false;
+  }
 
   isEquited(): boolean {
     return this.slotPos >= 0 && this.slotPos < BAG_START;
@@ -392,6 +440,120 @@ export class PlayerBag {
     if (it == null) return;
     it.quantity -= n;
     if (it.quantity <= 0) this.items.delete(slot);
+  }
+
+  // ---- PlayerBag.equipItem / unequipItem (1.2.0, jadx decompile) ----
+
+  /** PlayerBag.swapItem. */
+  swapItem(a: number, b: number): number {
+    const ia = this.getItem(a);
+    const ib = this.getItem(b);
+    this.items.delete(a);
+    this.items.delete(b);
+    if (ia != null) this.setItem(b, ia);
+    if (ib != null) this.setItem(a, ib);
+    return 1;
+  }
+
+  /** PlayerBag.nextFreePos(2): the first empty bag slot, or -1. */
+  nextFreePos(): number {
+    for (let s = BAG_START; s < BAG_END; s++) if (!this.items.has(s)) return s;
+    return -1;
+  }
+
+  countFreePos(): number {
+    let n = 0;
+    for (let s = BAG_START; s < BAG_END; s++) if (!this.items.has(s)) n++;
+    return n;
+  }
+
+  static isOneHandWeaponType(t: number): boolean {
+    return t === 13 || t === 15 || t === 21 || t === 35 || t === 37;
+  }
+
+  static isTwoHandWeaponType(t: number): boolean {
+    return [14, 16, 18, 19, 20, 22, 34, 23, 36, 38, 39].includes(t);
+  }
+
+  private isHaveEquipOneHandHand(): number {
+    if (this.getItem(8)?.type === 24) return 8;
+    return this.getItem(10)?.type === 24 ? 10 : -1;
+  }
+
+  /** PlayerBag.isSameWeaponType: whether a weapon of type `t` pairs with the ones held. */
+  isSameWeaponType(t: number): number {
+    const a = this.getItem(8);
+    const b = this.getItem(10);
+    if (t === 24) {
+      const ta = a?.type ?? -1;
+      const tb = b?.type ?? -1;
+      if (PlayerBag.isOneHandWeaponType(ta) && (tb === -1 || tb === 24)) return 3;
+      if (PlayerBag.isOneHandWeaponType(tb)) return ta === -1 || ta === 24 ? 3 : -5;
+      return -5;
+    }
+    if (a != null && t !== a.type) return -3;
+    if (b != null && t !== b.type) return -4;
+    return a == null && b == null ? 2 : 1;
+  }
+
+  private equipWeapon(slot: number): number {
+    const used = (this.items.has(8) ? 1 : 0) + (this.items.has(10) ? 1 : 0);
+    if (used === 2) {
+      if (this.countFreePos() < 1) return -11;
+      const free = this.nextFreePos();
+      this.swapItem(8, slot);
+      this.swapItem(10, free);
+    } else if (used === 1) {
+      if (this.items.has(10)) this.swapItem(8, 10);
+      this.swapItem(8, slot);
+    } else {
+      this.swapItem(8, slot);
+    }
+    return 1;
+  }
+
+  /** PlayerBag.equipItem: moves the bag item into its equipment slot (`positions`, else by type). */
+  equipItem(slot: number, positions: number[] | null = null): number {
+    const item = this.getItem(slot);
+    if (item == null) return -2;
+    const pos = positions ?? PlayerBag.getEquipPosByType(item.type);
+    if (pos == null || pos.length === 0) return -3;
+    const typePos = PlayerBag.getEquipPosByType(item.type) ?? [];
+    if (pos.some((p) => !typePos.includes(p))) return -4;
+    const oneHand = this.isHaveEquipOneHandHand() > 0 && PlayerBag.isOneHandWeaponType(item.type);
+    if (!oneHand && (pos[0] === 8 || pos[0] === 10) && (this.isSameWeaponType(item.type) < 0 || PlayerBag.isTwoHandWeaponType(item.type))) {
+      return item.type === 24 ? -5 : this.equipWeapon(item.slotPos);
+    }
+    for (const p of pos) {
+      if (p < 0 || p >= BAG_START) return -5;
+      const held = this.getItem(p);
+      if (held == null) return this.swapItem(p, item.slotPos);
+      if (item.type === 24) {
+        if (held.type === 24) return this.swapItem(p, item.slotPos);
+      } else if (oneHand && PlayerBag.isOneHandWeaponType(held.type)) {
+        return this.swapItem(p, item.slotPos);
+      }
+    }
+    if (item.type === 24) return -6;
+    if (oneHand) return -7;
+    return this.swapItem(pos[0], item.slotPos);
+  }
+
+  /** PlayerBag.unequipItem: the item (and an off-hand that needs it) back into the bag. */
+  unequipItem(item: Item | null): number {
+    if (item == null) return -1;
+    const s = item.slotPos;
+    if (s < 0 || s >= BAG_START) return -2;
+    let free = this.nextFreePos();
+    if (free < 0) return -3;
+    const offHand = PlayerBag.isOneHandWeaponType(item.type) ? this.isHaveEquipOneHandHand() : -1;
+    if (offHand > 0 && this.countFreePos() < 2) return -4;
+    this.swapItem(s, free);
+    if (offHand > 0) {
+      free = this.nextFreePos();
+      if (free >= 0) this.swapItem(offHand, free);
+    }
+    return free;
   }
 
   clearBag(): void {

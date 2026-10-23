@@ -15,6 +15,8 @@ import { GameSprite } from '../../sprite/GameSprite';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { UIObject, registerPageUpdater } from '../UIObject';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
+import { doEquipAction, doUnEquipAction } from '../../main/BagActions';
+import { isOnline } from '../../../net/online/Online';
 import { PlayerInfoUIAction, TAB_ATTRIBUTE, TAB_SKILL, updatePlayerBaseUI } from './playerInfo';
 import { EVENT_SKILL_PANEL, TYPE_PLAYER_SKILL, addSkillPanelTab, processSkillListAction, updatePlayerSkillUI } from './playerSkill';
 import { EVENT_ATTRIBUTE_PANEL, TYPE_PLAYER_ATTRIBUTE, processAttributeAction, updatePlayerAttributeUI } from './playerAttribute';
@@ -226,6 +228,11 @@ export function doMerPetMenuButton(target: unknown, ui: UIHandler | null, ev: nu
         'Chi tiết trân thú',
       );
     }
+  } else if ((ev === 11131 || ev === 11132) && isOnline() && pet?.petItem != null && GameWorld.myPlayer != null) {
+    // Send out / call back: GameWorld.doEquipAction / doUnEquipAction with the pet item.
+    const me = GameWorld.myPlayer;
+    ui?.close();
+    void (ev === 11131 ? doEquipAction(me, pet.petItem) : doUnEquipAction(me, pet.petItem));
   } else {
     alertMessage(STR_NEED_SERVER);
   }

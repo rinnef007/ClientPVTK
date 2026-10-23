@@ -23,6 +23,8 @@ import type { InputState } from '../midp/Input';
 import { LEFT, TOP } from '../midp/anchor';
 import { createLocalBattleResultMsg, readLocalBattleReward, type LocalBattleReward } from '../net/online/BattleMessages';
 import type { OnlineSession } from '../net/online/OnlineSession';
+import { createAttributeUpdateMsg } from '../net/online/BagMessages';
+import { handlePush } from '../net/online/PushHandler';
 import { COLOR_TEXT, SCREEN_HEIGHT, SCREEN_WIDTH, type Scene } from './Scene';
 
 /** Number image sets (damage, heal, MP, crit), the combat-point digits and the portrait frames. */
@@ -125,6 +127,8 @@ export class BattleScene implements Scene, BattleHost {
     this.ended = true;
     UIHandler.closeAllUI();
     const me = this.setup.me;
+    // GameCanvas.doBattle(3): ask for the player's values again (the backend answers 11004 with a heal).
+    this.setup.session?.net.send(createAttributeUpdateMsg());
     // The backend revives a beaten player at a tenth of their HP (handlers.local_battle_result).
     if (!e.isWin() && me.get(2) <= 0) me.set(2, Math.max(1, Math.trunc(me.get(29) / 10)));
     for (const p of [me, me.getPet()]) {
@@ -143,7 +147,7 @@ export class BattleScene implements Scene, BattleHost {
   update(input: InputState): void {
     if (this.setup.session) {
       this.setup.session.pump();
-      this.setup.session.takeUnhandled();
+      for (const m of this.setup.session.takeUnhandled()) handlePush(m, this.setup.me);
     }
     uiClock.tick++;
     WorldMessage.logic();

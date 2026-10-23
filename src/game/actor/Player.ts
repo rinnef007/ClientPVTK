@@ -522,6 +522,40 @@ export class Player extends Model {
     return 1;
   }
 
+  /** Player.removeSkill (by id). */
+  removeSkill(s: Skill | null): void {
+    if (s == null) return;
+    const i = this.skillList.findIndex((o) => o != null && o.id === s.id);
+    if (i < 0) return;
+    const k = this.autoSkillID.indexOf(s.id);
+    if (k >= 0) this.autoSkillID[k] = 0;
+    this.skillList.splice(i, 1);
+  }
+
+  /** Player.fromItemSetData: the item-set bonus table (flat triples). */
+  fromItemSetData(m: { getByte(): number; getShort(): number }): void {
+    const n = m.getByte();
+    this.itemSetData = [];
+    for (let i = 0; i < n; i++) this.itemSetData.push(m.getShort());
+  }
+
+  /** Player.fromSkillData: skills learnt (1, 2 with their add level) or forgotten (3), then the auto skills. */
+  fromSkillData(m: { getByte(): number; getShort(): number; getInt(): number }, readSkill: () => Skill): void {
+    for (let n = m.getByte(); n > 0; n--) {
+      const kind = m.getByte();
+      if (kind === 1 || kind === 2) {
+        const s = readSkill();
+        s.addLevel = m.getByte();
+        this.learnSkill(s);
+      } else if (kind === 3) {
+        this.removeSkill(this.getSkillByID(m.getInt()));
+      }
+    }
+    this.autoSkillID = [];
+    for (let n = m.getByte(); n > 0; n--) this.autoSkillID.push(m.getShort());
+    this.autoSkillID_Initiative = m.getShort();
+  }
+
   /** Player.getAutoSkillCount: the filled auto-battle slots. */
   getAutoSkillCount(): number {
     return this.autoSkillID.filter((id) => id > 0).length;

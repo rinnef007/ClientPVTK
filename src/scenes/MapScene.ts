@@ -46,6 +46,9 @@ import { Battle } from '../game/battle/Battle';
 import { MonsterGroup } from '../game/core/MonsterGroup';
 import { Image } from '../game/image/Image';
 import { createEnterLocalBattleMsg, type LocalBattleReward } from '../net/online/BattleMessages';
+import { handlePush } from '../net/online/PushHandler';
+import { setOnBagChanged } from '../game/main/BagActions';
+import { TYPE_PLAYER_EQUIP } from '../game/ui/screens/equip';
 import { MenuScene } from './MenuScene';
 import { COLOR_TEXT, SCREEN_HEIGHT, SCREEN_WIDTH, type Context, type Scene } from './Scene';
 import { SOFTKEY_H, initUIEnvironment, softKeyAt } from './ui';
@@ -202,6 +205,7 @@ export class MapScene implements Scene {
     GameWorld.setMotion(isMotion);
     setOnQuitGame(() => this.leave());
     GameWorld.setBattleStarter((id) => this.startBattle(id, online, me));
+    setOnBagChanged((p) => this.onBagChanged(p));
     this.hud = hud;
     this.others = [];
     this.map = map;
@@ -232,6 +236,12 @@ export class MapScene implements Scene {
     const icons: [bigint, bigint, bigint] = d ? [d.icon1, d.icon2, d.icon3] : [0n, 0n, 0n];
     this.ctx.go(new BattleScene({ battle, me, icons, session: online.session, background: bg, onEnd: (r) => this.endBattle(me, r) }));
     return true;
+  }
+
+  /** After a bag / value change: the HUD and an open equipment screen redraw. */
+  private onBagChanged(me: Player): void {
+    this.refreshHud(me);
+    UIHandler.getUIByType(TYPE_PLAYER_EQUIP)?.notifyLayerAction(50);
   }
 
   /** Back from a battle (stage 20): the HUD, then the reward text and NPC signs when they arrive. */
@@ -385,11 +395,14 @@ export class MapScene implements Scene {
   }
 
   update(input: InputState): void {
-    // MsgHandler.handleMessages: the backend's pushes (other players, chat…) are not handled yet.
+    // MsgHandler.handleMessages: values, bag and skills pushed by the backend; other pushes
+    // (other players, chat…) are not handled yet.
     if (this.online) {
       this.online.session.pump();
-      this.online.session.takeUnhandled();
       const me = GameWorld.myPlayer;
+      let changed = false;
+      for (const m of this.online.session.takeUnhandled()) changed = handlePush(m, me) || changed;
+      if (changed && me) this.onBagChanged(me);
       if (me) onlineState.moveSync?.tick(me.getGx(), me.getGy());
     }
     // Stage 60 (world map): the map and its dialogs take the input; the world does not run.

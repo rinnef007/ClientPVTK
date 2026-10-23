@@ -15,6 +15,8 @@ import { PowerString } from '../../string/PowerString';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { STR_NEED_SERVER } from '../UIAction';
 import { createPetInfoUI } from './pet';
+import { doEquipAction, doUnEquipAction, doWorldUseItemAction } from '../../main/BagActions';
+import { isOnline } from '../../../net/online/Online';
 
 export const TYPE_EQUIP_POP = 4;
 const STR_EQUIP_MODE = 'T.Bị'; // GameText 0
@@ -24,6 +26,7 @@ const STR_X = ' x '; // GameText 64
 const EV_EQUIP = 11096;
 const EV_COMPARE = 11098;
 const EV_UNEQUIP = 11103;
+const EV_USE = 11104;
 
 /** updatePlayerEquipPopMenu in "T.Bị" mode: [text, event] per button (event 0 = close). */
 function equipMenu(p: Player, item: Item): [string, number][] {
@@ -50,7 +53,7 @@ function equipMenu(p: Player, item: Item): [string, number][] {
     add('Đạo cụ', 11106);
     if (!equipped) add('P.sinh', 11102);
   } else if (cls === 4) {
-    if (item.isCanUse(1)) add('Dùng', 11104);
+    if (item.isCanUse(1)) add('Dùng', EV_USE);
     else add(STR_BACK, -1);
     add(STR_SELL, 11191);
   } else {
@@ -157,6 +160,13 @@ export function processEquipPopLayer(ui: UIHandler, action: number): void {
   const ev = target.getEventType();
   if (ev <= 0) {
     ui.close();
+    return;
+  }
+  const me = GameWorld.myPlayer;
+  if (isOnline() && me != null && (ev === EV_EQUIP || ev === EV_UNEQUIP || ev === EV_USE)) {
+    // UIAction.processEquipPopLayer → GameWorld.doEquipAction / doUnEquipAction / doWorldUseItemAction.
+    ui.close();
+    void (ev === EV_EQUIP ? doEquipAction(me, item) : ev === EV_UNEQUIP ? doUnEquipAction(me, item) : doWorldUseItemAction(me, item));
     return;
   }
   if (ev === EV_COMPARE) {

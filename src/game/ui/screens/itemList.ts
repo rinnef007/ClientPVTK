@@ -8,6 +8,8 @@ import type { Player } from '../../actor/Player';
 import * as GameWorld from '../../main/GameWorld';
 import { UIHandler, alertMessage } from '../UIHandler';
 import { STR_NEED_SERVER, registerScreen } from '../UIAction';
+import { doWorldUseItemAction } from '../../main/BagActions';
+import { isOnline } from '../../../net/online/Online';
 
 export const TYPE_WORLD_ITEM = 35;
 const STR_NO_WORLD_ITEM_USE = 'Túi không có đạo cụ có thể dùng!'; // GameText
@@ -90,7 +92,15 @@ function processWorldItemLayer(ui: UIHandler, action: number): void {
   if (win == null || !(item instanceof Item) || action !== 0) return;
   const w = ui.getActionGWidget();
   if (w == null) return;
-  if (win.oldFocusIndex === win.focusIndex || w.getEventType() === 3) alertMessage(STR_NEED_SERVER);
+  if (win.oldFocusIndex === win.focusIndex || w.getEventType() === 3) {
+    const me = GameWorld.myPlayer;
+    if (isOnline() && me != null) {
+      // GameWorld.doWorldUseItemAction, then the list shows what is left.
+      void doWorldUseItemAction(me, item).then(() => ui.close());
+    } else {
+      alertMessage(STR_NEED_SERVER);
+    }
+  }
   else if (w.getEventType() === 4) updateDataToWorldItemInfo(ui, item);
 }
 
